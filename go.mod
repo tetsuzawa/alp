@@ -1,4 +1,4 @@
-module github.com/tkuchiki/alp
+module github.com/tetsuzawa/alp-trace
 
 require (
 	github.com/Songmu/go-ltsv v0.1.0
