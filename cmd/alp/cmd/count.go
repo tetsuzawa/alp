@@ -63,11 +63,11 @@ func NewCountCmd() *cobra.Command {
 			switch format {
 			case "json":
 				jsonKeys := parsers.NewJSONKeys(opts.JSON.UriKey, opts.JSON.MethodKey, opts.JSON.TimeKey,
-					opts.JSON.ResponseTimeKey, opts.JSON.RequestTimeKey, opts.JSON.BodyBytesKey, opts.JSON.StatusKey)
+					opts.JSON.ResponseTimeKey, opts.JSON.RequestTimeKey, opts.JSON.BodyBytesKey, opts.JSON.StatusKey, opts.JSON.TraceIDKey)
 				parser = parsers.NewJSONParser(f, jsonKeys, opts.QueryString, opts.QueryStringIgnoreValues)
 			case "ltsv":
 				label := parsers.NewLTSVLabel(opts.LTSV.UriLabel, opts.LTSV.MethodLabel, opts.LTSV.TimeLabel,
-					opts.LTSV.ApptimeLabel, opts.LTSV.ReqtimeLabel, opts.LTSV.SizeLabel, opts.LTSV.StatusLabel,
+					opts.LTSV.ApptimeLabel, opts.LTSV.ReqtimeLabel, opts.LTSV.SizeLabel, opts.LTSV.StatusLabel, opts.LTSV.TraceIDLabel,
 				)
 				parser = parsers.NewLTSVParser(f, label, opts.QueryString, opts.QueryStringIgnoreValues)
 			case "regexp":

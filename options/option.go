@@ -23,6 +23,7 @@ const (
 	DefaultMethodLabelOption  = "method"
 	DefaultUriLabelOption     = "uri"
 	DefaultTimeLabelOption    = "time"
+	DefaultTraceIDLabelOption = "trace_id"
 	// json
 	DefaultUriKeyOption          = "uri"
 	DefaultMethodKeyOption       = "method"
@@ -31,6 +32,7 @@ const (
 	DefaultRequestTimeKeyOption  = "request_time"
 	DefaultBodyBytesKeyOption    = "body_bytes"
 	DefaultStatusKeyOption       = "status"
+	DefaultTraceIDKeyOption      = "trace_id"
 	// regexp
 	DefaultPatternOption = `^(\S+)\s` + // remote host
 		`\S+\s+` +
@@ -80,6 +82,7 @@ type Options struct {
 	Output                  string         `yaml:"output"`
 	Percentiles             []int          `yaml:"percentiles"`
 	PaginationLimit         int            `yaml:"pagination_limit"`
+	Trace                   bool           `yaml:"trace"`
 	LTSV                    *LTSVOptions   `yaml:"ltsv"`
 	Regexp                  *RegexpOptions `yaml:"regexp"`
 	JSON                    *JSONOptions   `yaml:"json"`
@@ -94,6 +97,7 @@ type LTSVOptions struct {
 	MethodLabel  string `yaml:"method_label"`
 	UriLabel     string `yaml:"uri_label"`
 	TimeLabel    string `yaml:"time_label"`
+	TraceIDLabel string `yaml:"trace_id_label"`
 }
 
 type RegexpOptions struct {
@@ -115,6 +119,7 @@ type JSONOptions struct {
 	RequestTimeKey  string `yaml:"request_time_key"`
 	BodyBytesKey    string `yaml:"body_bytes_key"`
 	StatusKey       string `yaml:"status_key"`
+	TraceIDKey      string `yaml:"trace_id_key"`
 }
 
 type PcapOptions struct {
@@ -293,6 +298,14 @@ func PaginationLimit(i int) Option {
 	}
 }
 
+func Trace(b bool) Option {
+	return func(opts *Options) {
+		if b {
+			opts.Trace = b
+		}
+	}
+}
+
 // ltsv
 func ApptimeLabel(s string) Option {
 	return func(opts *Options) {
@@ -314,6 +327,14 @@ func StatusLabel(s string) Option {
 	return func(opts *Options) {
 		if s != "" {
 			opts.LTSV.StatusLabel = s
+		}
+	}
+}
+
+func TraceIDLabel(s string) Option {
+	return func(opts *Options) {
+		if s != "" {
+			opts.LTSV.TraceIDLabel = s
 		}
 	}
 }
@@ -472,6 +493,14 @@ func StatusKey(s string) Option {
 	}
 }
 
+func TraceIDKey(s string) Option {
+	return func(opts *Options) {
+		if s != "" {
+			opts.JSON.TraceIDKey = s
+		}
+	}
+}
+
 // pcap
 func PcapServerIPs(ss []string) Option {
 	return func(opts *Options) {
@@ -586,6 +615,7 @@ func LoadOptionsFromReader(r io.Reader) (*Options, error) {
 		Filters(configs.Filters),
 		Percentiles(configs.Percentiles),
 		PaginationLimit(configs.PaginationLimit),
+		Trace(configs.Trace),
 		// ltsv
 		ApptimeLabel(configs.LTSV.ApptimeLabel),
 		ReqtimeLabel(configs.LTSV.ReqtimeLabel),

@@ -63,21 +63,35 @@ func (p *Profiler) ReadPosFile(f *os.File) (int, error) {
 
 func (p *Profiler) Run(sortOptions *stats.SortOptions, parser parsers.Parser) error {
 	sts := stats.NewHTTPStats(true, false, false)
+	tsts := stats.NewTraceStats(true, false, false)
 
 	err := sts.InitFilter(p.options)
 	if err != nil {
 		return err
 	}
 
+	err = tsts.InitFilter(p.options)
+	if err != nil {
+		return err
+	}
+
 	sts.SetOptions(p.options)
 	sts.SetSortOptions(sortOptions)
+	tsts.SetOptions(p.options)
+	tsts.SetSortOptions(sortOptions)
 
 	printOptions := stats.NewPrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
 	printer := stats.NewPrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, printOptions)
 	if err = printer.Validate(); err != nil {
 		return err
 	}
+	tracePrintOptions := stats.NewTracePrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
+	tracePrinter := stats.NewTracePrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, tracePrintOptions)
+	if err = tracePrinter.Validate(); err != nil {
+		return err
+	}
 
+	// TODO traceは現在loadに非対応
 	if p.options.Load != "" {
 		lf, err := os.Open(p.options.Load)
 		if err != nil {
@@ -96,6 +110,10 @@ func (p *Profiler) Run(sortOptions *stats.SortOptions, parser parsers.Parser) er
 
 	if len(p.options.MatchingGroups) > 0 {
 		err = sts.SetURIMatchingGroups(p.options.MatchingGroups)
+		if err != nil {
+			return err
+		}
+		err = tsts.SetURIMatchingGroups(p.options.MatchingGroups)
 		if err != nil {
 			return err
 		}
@@ -140,6 +158,11 @@ Loop:
 		if err != nil {
 			return err
 		}
+		// 2回filterする理由がない
+		//b, err = tsts.DoFilter(s)
+		//if err != nil {
+		//	return err
+		//}
 
 		if !b {
 			continue Loop
@@ -147,18 +170,33 @@ Loop:
 
 		sts.Set(s.Uri, s.Method, s.Status, s.ResponseTime, s.BodyBytes, 0)
 
+		if p.options.Trace {
+			tsts.AppendTrace(s.TraceID, s.Uri, s.Method, s.Status, s.ResponseTime, s.BodyBytes, 0, parser.ReadBytes())
+		}
+
 		if sts.CountUris() > p.options.Limit {
 			return fmt.Errorf("Too many URI's (%d or less)", p.options.Limit)
 		}
 	}
 
+	if p.options.Trace {
+		tsts.AggregateTrace()
+	}
+
 	if p.options.Dump != "" {
 		df, err := os.OpenFile(p.options.Dump, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-		err = sts.DumpStats(df)
-		if err != nil {
-			return err
-		}
 		defer df.Close()
+		if p.options.Trace {
+			err = tsts.DumpStats(df)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = sts.DumpStats(df)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	if !p.options.NoSavePos && p.options.PosFile != "" {
@@ -170,7 +208,11 @@ Loop:
 	}
 
 	sts.SortWithOptions()
-	printer.Print(sts, nil)
-
+	tsts.SortWithOptions()
+	if p.options.Trace {
+		tracePrinter.Print(tsts, nil)
+	} else {
+		printer.Print(sts, nil)
+	}
 	return nil
 }
