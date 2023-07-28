@@ -1,4 +1,4 @@
-NAME := alp
+NAME := alp-trace
 GO_LDFLAGS=-s -w
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 

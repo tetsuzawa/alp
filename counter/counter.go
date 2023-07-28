@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tkuchiki/alp/errors"
-	"github.com/tkuchiki/alp/parsers"
+	"github.com/tetsuzawa/alp-trace/errors"
+	"github.com/tetsuzawa/alp-trace/parsers"
 )
 
 type Counter struct {

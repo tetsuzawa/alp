@@ -3,9 +3,9 @@ package stats
 import (
 	"time"
 
-	"github.com/tkuchiki/alp/errors"
-	"github.com/tkuchiki/alp/options"
-	"github.com/tkuchiki/alp/parsers"
+	"github.com/tetsuzawa/alp-trace/errors"
+	"github.com/tetsuzawa/alp-trace/options"
+	"github.com/tetsuzawa/alp-trace/parsers"
 	"github.com/tkuchiki/parsetime"
 )
 

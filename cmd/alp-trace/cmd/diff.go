@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tkuchiki/alp/stats"
+	"github.com/tetsuzawa/alp-trace/stats"
 )
 
 func NewDiffCmd(rootCmd *cobra.Command) *cobra.Command {

@@ -3,7 +3,7 @@
 pkg/
 src/
 tmp/
-cmd/alp/alp
+cmd/alp-trace/alp
 vendor
 dist/
 .envrc
