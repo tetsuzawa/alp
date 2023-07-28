@@ -6,7 +6,7 @@ builds:
   - env:
       - CGO_ENABLED=0
     main: ./cmd/alp-trace/main.go
-    binary: alp
+    binary: alp-trace
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
