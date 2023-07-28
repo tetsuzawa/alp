@@ -58,6 +58,11 @@ func NewJSONCmd(rootCmd *cobra.Command) *cobra.Command {
 				return err
 			}
 
+			traceIDKey, err := cmd.PersistentFlags().GetString("traceid-key")
+			if err != nil {
+				return err
+			}
+
 			opts = options.SetOptions(opts,
 				options.UriKey(uriKey),
 				options.MethodKey(methodKey),
@@ -66,6 +71,7 @@ func NewJSONCmd(rootCmd *cobra.Command) *cobra.Command {
 				options.RequestTimeKey(requestTimeKey),
 				options.BodyBytesKey(bodyBytesKey),
 				options.StatusKey(statusKey),
+				options.TraceIDKey(traceIDKey),
 			)
 
 			prof := profiler.NewProfiler(os.Stdout, os.Stderr, opts)
@@ -77,7 +83,7 @@ func NewJSONCmd(rootCmd *cobra.Command) *cobra.Command {
 			defer f.Close()
 
 			keys := parsers.NewJSONKeys(opts.JSON.UriKey, opts.JSON.MethodKey, opts.JSON.TimeKey,
-				opts.JSON.ResponseTimeKey, opts.JSON.RequestTimeKey, opts.JSON.BodyBytesKey, opts.JSON.StatusKey)
+				opts.JSON.ResponseTimeKey, opts.JSON.RequestTimeKey, opts.JSON.BodyBytesKey, opts.JSON.StatusKey, opts.JSON.TraceIDKey)
 			parser := parsers.NewJSONParser(f, keys, opts.QueryString, opts.QueryStringIgnoreValues)
 
 			err = prof.Run(sortOptions, parser)

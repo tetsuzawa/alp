@@ -16,7 +16,7 @@ type JSONParser struct {
 	readBytes      int
 }
 
-func NewJSONKeys(uri, method, time, responseTime, requestTime, size, status string) *statKeys {
+func NewJSONKeys(uri, method, time, responseTime, requestTime, size, status, traceID string) *statKeys {
 	return newStatKeys(
 		uriKey(uri),
 		methodKey(method),
@@ -25,6 +25,7 @@ func NewJSONKeys(uri, method, time, responseTime, requestTime, size, status stri
 		requestTimeKey(requestTime),
 		bodyBytesKey(size),
 		statusKey(status),
+		traceIDKey(traceID),
 	)
 }
 
@@ -50,7 +51,7 @@ func (j *JSONParser) Parse() (*ParsedHTTPStat, error) {
 		return nil, err
 	}
 
-	keys := make([]string, 6)
+	keys := make([]string, 8)
 	keys = []string{
 		j.keys.uri,
 		j.keys.method,
@@ -59,8 +60,9 @@ func (j *JSONParser) Parse() (*ParsedHTTPStat, error) {
 		j.keys.requestTime,
 		j.keys.bodyBytes,
 		j.keys.status,
+		j.keys.traceID,
 	}
-	parsedValue := make(map[string]string, 6)
+	parsedValue := make(map[string]string, 8)
 	for _, key := range keys {
 		val, ok := tmp[key]
 		if !ok {

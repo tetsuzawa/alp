@@ -94,7 +94,8 @@ func (j *PcapParser) Parse() (*ParsedHTTPStat, error) {
 	uri := normalizeURL(req.URL, j.queryString, j.qsIgnoreValues)
 
 	resBodyBytes := res.ContentLength
-	stat := NewParsedHTTPStat(uri, req.Method, reqTimestamp.Format(time.RFC3339), math.Abs(resTime.Seconds()), float64(resBodyBytes), res.StatusCode)
+	// TODO trace IDに対応する
+	stat := NewParsedHTTPStat(uri, req.Method, reqTimestamp.Format(time.RFC3339), math.Abs(resTime.Seconds()), float64(resBodyBytes), res.StatusCode, "")
 	return stat, nil
 }
 

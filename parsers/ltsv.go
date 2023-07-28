@@ -16,7 +16,7 @@ type LTSVParser struct {
 	readBytes      int
 }
 
-func NewLTSVLabel(uri, method, time, responseTime, requestTime, size, status string) *statKeys {
+func NewLTSVLabel(uri, method, time, responseTime, requestTime, size, status, traceID string) *statKeys {
 	return newStatKeys(
 		uriKey(uri),
 		methodKey(method),
@@ -25,6 +25,7 @@ func NewLTSVLabel(uri, method, time, responseTime, requestTime, size, status str
 		requestTimeKey(requestTime),
 		bodyBytesKey(size),
 		statusKey(status),
+		traceIDKey(traceID),
 	)
 }
 

@@ -1,7 +1,7 @@
 module github.com/tkuchiki/alp
 
 require (
-	github.com/Songmu/go-ltsv v0.0.0-20200903131950-a608c3f6a014
+	github.com/Songmu/go-ltsv v0.1.0
 	github.com/antonmedv/expr v1.8.9
 	github.com/google/gopacket v1.1.19
 	github.com/kylelemons/godebug v1.1.0
@@ -14,7 +14,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/kr/pretty v0.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

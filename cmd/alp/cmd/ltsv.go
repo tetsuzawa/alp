@@ -58,6 +58,11 @@ func NewLTSVCmd(rootCmd *cobra.Command) *cobra.Command {
 				return err
 			}
 
+			traceIDLabel, err := cmd.PersistentFlags().GetString("traceid-label")
+			if err != nil {
+				return err
+			}
+
 			opts = options.SetOptions(opts,
 				options.UriLabel(uriLabel),
 				options.MethodLabel(methodLabel),
@@ -66,6 +71,7 @@ func NewLTSVCmd(rootCmd *cobra.Command) *cobra.Command {
 				options.ReqtimeLabel(reqTimeLabel),
 				options.SizeLabel(sizeLabel),
 				options.StatusLabel(statusLabel),
+				options.TraceIDLabel(traceIDLabel),
 			)
 
 			prof := profiler.NewProfiler(os.Stdout, os.Stderr, opts)
@@ -77,7 +83,7 @@ func NewLTSVCmd(rootCmd *cobra.Command) *cobra.Command {
 			defer f.Close()
 
 			label := parsers.NewLTSVLabel(opts.LTSV.UriLabel, opts.LTSV.MethodLabel, opts.LTSV.TimeLabel,
-				opts.LTSV.ApptimeLabel, opts.LTSV.ReqtimeLabel, opts.LTSV.SizeLabel, opts.LTSV.StatusLabel,
+				opts.LTSV.ApptimeLabel, opts.LTSV.ReqtimeLabel, opts.LTSV.SizeLabel, opts.LTSV.StatusLabel, opts.LTSV.TraceIDLabel,
 			)
 			parser := parsers.NewLTSVParser(f, label, opts.QueryString, opts.QueryStringIgnoreValues)
 

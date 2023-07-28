@@ -32,6 +32,7 @@ func defineOptions(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("nosave-pos", "", false, "Do not save position file")
 	cmd.PersistentFlags().StringP("percentiles", "", "", "Specifies the percentiles separated by commas")
 	cmd.PersistentFlags().IntP("page", "", options.DefaultPaginationLimit, "Number of pages of pagination")
+	cmd.PersistentFlags().BoolP("trace", "", false, "Enable tracing analysis")
 }
 
 func createOptions(cmd *cobra.Command, sortOptions *stats.SortOptions) (*options.Options, error) {
@@ -157,6 +158,11 @@ func createOptions(cmd *cobra.Command, sortOptions *stats.SortOptions) (*options
 		return nil, err
 	}
 
+	trace, err := cmd.PersistentFlags().GetBool("trace")
+	if err != nil {
+		return nil, err
+	}
+
 	var opts *options.Options
 	if config != "" {
 		cf, err := os.Open(config)
@@ -201,5 +207,6 @@ func createOptions(cmd *cobra.Command, sortOptions *stats.SortOptions) (*options
 		options.NoSavePos(noSavePos),
 		options.Percentiles(percentiles),
 		options.PaginationLimit(paginationLimit),
+		options.Trace(trace),
 	), nil
 }

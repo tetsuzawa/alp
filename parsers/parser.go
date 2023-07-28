@@ -24,6 +24,7 @@ type ParsedHTTPStat struct {
 	ResponseTime float64
 	BodyBytes    float64
 	Status       int
+	TraceID      string
 	Entries      LogEntries
 }
 
@@ -37,6 +38,7 @@ type statKeys struct {
 	requestTime  string
 	bodyBytes    string
 	status       string
+	traceID      string
 }
 
 type statKey func(*statKeys)
@@ -97,6 +99,14 @@ func statusKey(s string) statKey {
 	}
 }
 
+func traceIDKey(s string) statKey {
+	return func(sk *statKeys) {
+		if s != "" {
+			sk.traceID = s
+		}
+	}
+}
+
 func newStatKeys(sk ...statKey) *statKeys {
 	sks := &statKeys{
 		uri:          "uri",
@@ -106,6 +116,7 @@ func newStatKeys(sk ...statKey) *statKeys {
 		requestTime:  "request_time",
 		bodyBytes:    "body_bytes",
 		status:       "status",
+		traceID:      "trace_id",
 	}
 
 	for _, s := range sk {
@@ -147,7 +158,7 @@ func readline(reader *bufio.Reader) ([]byte, int, error) {
 	return b, i, err
 }
 
-func NewParsedHTTPStat(uri, method, time string, resTime, bodyBytes float64, status int) *ParsedHTTPStat {
+func NewParsedHTTPStat(uri, method, time string, resTime, bodyBytes float64, status int, traceID string) *ParsedHTTPStat {
 	return &ParsedHTTPStat{
 		Uri:          uri,
 		Method:       method,
@@ -155,6 +166,7 @@ func NewParsedHTTPStat(uri, method, time string, resTime, bodyBytes float64, sta
 		ResponseTime: resTime,
 		BodyBytes:    bodyBytes,
 		Status:       status,
+		TraceID:      traceID,
 	}
 }
 
@@ -187,10 +199,15 @@ func toStats(parsedValue map[string]string, keys *statKeys, strictMode, queryStr
 		return nil, errSkipReadLine(strictMode, err)
 	}
 
+	traceID := parsedValue[keys.traceID]
+	if traceID == "" {
+		return nil, errSkipReadLine(strictMode, err)
+	}
+
 	method := parsedValue[keys.method]
 	timestr := parsedValue[keys.time]
 
-	return NewParsedHTTPStat(uri, method, timestr, resTime, bodyBytes, status), nil
+	return NewParsedHTTPStat(uri, method, timestr, resTime, bodyBytes, status, traceID), nil
 }
 
 func normalizeURL(src *url.URL, queryString, qsIgnoreValues bool) string {

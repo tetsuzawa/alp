@@ -41,6 +41,7 @@ func (h *hints) loadOrStore(key string) int {
 type HTTPStats struct {
 	hints                          *hints
 	stats                          httpStats
+	traceStats                     *TraceStats
 	useResponseTimePercentile      bool
 	useRequestBodyBytesPercentile  bool
 	useResponseBodyBytesPercentile bool
@@ -54,6 +55,7 @@ func NewHTTPStats(useResTimePercentile, useRequestBodyBytesPercentile, useRespon
 	return &HTTPStats{
 		hints:                          newHints(),
 		stats:                          make([]*HTTPStat, 0),
+		traceStats:                     NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile),
 		useResponseTimePercentile:      useResTimePercentile,
 		useResponseBodyBytesPercentile: useResponseBodyBytesPercentile,
 	}
