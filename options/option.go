@@ -4,7 +4,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/tkuchiki/alp/helpers"
+	"github.com/tetsuzawa/alp-trace/helpers"
 	"gopkg.in/yaml.v2"
 )
 

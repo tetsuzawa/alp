@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/tkuchiki/alp/cmd/alp/cmd"
+	"github.com/tetsuzawa/alp-trace/cmd/alp-trace/cmd"
 )
 
 var version string

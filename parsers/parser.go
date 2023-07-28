@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/url"
 
-	"github.com/tkuchiki/alp/errors"
-	"github.com/tkuchiki/alp/helpers"
+	"github.com/tetsuzawa/alp-trace/errors"
+	"github.com/tetsuzawa/alp-trace/helpers"
 )
 
 type Parser interface {

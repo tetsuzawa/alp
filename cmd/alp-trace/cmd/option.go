@@ -3,11 +3,11 @@ package cmd
 import (
 	"os"
 
-	"github.com/tkuchiki/alp/helpers"
+	"github.com/tetsuzawa/alp-trace/helpers"
 
 	"github.com/spf13/cobra"
-	"github.com/tkuchiki/alp/options"
-	"github.com/tkuchiki/alp/stats"
+	"github.com/tetsuzawa/alp-trace/options"
+	"github.com/tetsuzawa/alp-trace/stats"
 )
 
 func defineOptions(cmd *cobra.Command) {

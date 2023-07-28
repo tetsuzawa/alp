@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/tkuchiki/alp/helpers"
-	"github.com/tkuchiki/alp/html"
+	"github.com/tetsuzawa/alp-trace/helpers"
+	"github.com/tetsuzawa/alp-trace/html"
 )
 
 func keywords(percentiles []int) []string {

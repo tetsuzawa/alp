@@ -5,7 +5,7 @@ import (
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
-	"github.com/tkuchiki/alp/parsers"
+	"github.com/tetsuzawa/alp-trace/parsers"
 	"github.com/tkuchiki/parsetime"
 )
 

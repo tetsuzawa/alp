@@ -4,10 +4,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tkuchiki/alp/counter"
-	"github.com/tkuchiki/alp/helpers"
-	"github.com/tkuchiki/alp/options"
-	"github.com/tkuchiki/alp/parsers"
+	"github.com/tetsuzawa/alp-trace/counter"
+	"github.com/tetsuzawa/alp-trace/helpers"
+	"github.com/tetsuzawa/alp-trace/options"
+	"github.com/tetsuzawa/alp-trace/parsers"
 )
 
 func NewCountCmd() *cobra.Command {
