@@ -100,6 +100,7 @@ func NewJSONCmd(rootCmd *cobra.Command) *cobra.Command {
 	jsonCmd.PersistentFlags().StringP("reqtime-key", "", options.DefaultRequestTimeKeyOption, "Change the request_time key")
 	jsonCmd.PersistentFlags().StringP("body-bytes-key", "", options.DefaultBodyBytesKeyOption, "Change the body_bytes key")
 	jsonCmd.PersistentFlags().StringP("status-key", "", options.DefaultStatusKeyOption, "Change the status key")
+	jsonCmd.PersistentFlags().StringP("traceid-key", "", options.DefaultTraceIDKeyOption, "Change the trace_id key")
 
 	return jsonCmd
 }

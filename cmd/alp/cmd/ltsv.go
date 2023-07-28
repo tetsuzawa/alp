@@ -102,6 +102,7 @@ func NewLTSVCmd(rootCmd *cobra.Command) *cobra.Command {
 	ltsvCmd.PersistentFlags().StringP("reqtime-label", "", options.DefaultReqtimeLabelOption, "Change the reqtime label")
 	ltsvCmd.PersistentFlags().StringP("size-label", "", options.DefaultSizeLabelOption, "Change the size label")
 	ltsvCmd.PersistentFlags().StringP("status-label", "", options.DefaultStatusLabelOption, "Change the status label")
+	ltsvCmd.PersistentFlags().StringP("traceid-key", "", options.DefaultTraceIDLabelOption, "Change the trace_id label")
 
 	return ltsvCmd
 }

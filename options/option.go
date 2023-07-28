@@ -23,6 +23,7 @@ const (
 	DefaultMethodLabelOption  = "method"
 	DefaultUriLabelOption     = "uri"
 	DefaultTimeLabelOption    = "time"
+	DefaultTraceIDLabelOption = "trace_id"
 	// json
 	DefaultUriKeyOption          = "uri"
 	DefaultMethodKeyOption       = "method"
@@ -31,6 +32,7 @@ const (
 	DefaultRequestTimeKeyOption  = "request_time"
 	DefaultBodyBytesKeyOption    = "body_bytes"
 	DefaultStatusKeyOption       = "status"
+	DefaultTraceIDKeyOption      = "trace_id"
 	// regexp
 	DefaultPatternOption = `^(\S+)\s` + // remote host
 		`\S+\s+` +
