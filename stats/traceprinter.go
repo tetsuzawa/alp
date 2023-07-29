@@ -355,6 +355,7 @@ func findTraceStatFrom(tsFrom *TraceStats, tsTo *TraceStat) *TraceStat {
 
 func (p *TracePrinter) printTraceTable(tsFrom, tsTo *TraceStats) {
 	table := tablewriter.NewWriter(p.writer)
+	table.SetAutoWrapText(false)
 	table.SetHeader(p.headers)
 	if tsTo == nil {
 		for _, s := range tsFrom.stats {
@@ -393,6 +394,8 @@ func (p *TracePrinter) printTraceTable(tsFrom, tsTo *TraceStats) {
 func (p *TracePrinter) printTraceMarkdown(tsFrom, tsTo *TraceStats) {
 	table := tablewriter.NewWriter(p.writer)
 	table.SetHeader(p.headers)
+	table.SetAutoWrapText(false)
+	table.SetAutoMergeCells(true)
 	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
 	table.SetCenterSeparator("|")
 	if tsTo == nil {
