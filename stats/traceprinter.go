@@ -3,6 +3,7 @@ package stats
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
@@ -33,10 +34,15 @@ func traceKeywords(percentiles []int) []string {
 		sp = append(sp, fmt.Sprintf("p%d", p))
 	}
 
-	s := make([]string, 0, len(s1)+len(s2)+len(sp))
+	ss := []string{
+		"trace_id_sample",
+	}
+
+	s := make([]string, 0, len(s1)+len(s2)+len(sp)+len(ss))
 	s = append(s, s1...)
 	s = append(s, sp...)
 	s = append(s, s2...)
+	s = append(s, ss...)
 
 	return s
 }
@@ -64,10 +70,15 @@ func traceDefaultHeaders(percentiles []int) []string {
 		sp = append(sp, fmt.Sprintf("P%d", p))
 	}
 
-	s := make([]string, 0, len(s1)+len(s2)+len(sp))
+	ss := []string{
+		"TraceIdSample",
+	}
+
+	s := make([]string, 0, len(s1)+len(s2)+len(sp)+len(ss))
 	s = append(s, s1...)
 	s = append(s, sp...)
 	s = append(s, s2...)
+	s = append(s, ss...)
 
 	return s
 }
@@ -85,6 +96,7 @@ func traceHeadersMap(percentiles []int) map[string]string {
 		"max_body":          "Max(Body)",
 		"sum_body":          "Sum(Body)",
 		"avg_body":          "Avg(Body)",
+		"trace_id_sample":   "TraceIdSample",
 	}
 
 	for _, p := range percentiles {
@@ -121,15 +133,17 @@ type TracePrinter struct {
 	headersMap   map[string]string
 	writer       io.Writer
 	all          bool
+	traceIDRand  *rand.Rand
 }
 
-func NewTracePrinter(w io.Writer, val, format string, percentiles []int, printOptions *TracePrintOptions) *TracePrinter {
+func NewTracePrinter(w io.Writer, val, format string, percentiles []int, printOptions *TracePrintOptions, traceIDSamplingSeed int64) *TracePrinter {
 	p := &TracePrinter{
 		format:       format,
 		percentiles:  percentiles,
 		headersMap:   traceHeadersMap(percentiles),
 		writer:       w,
 		printOptions: printOptions,
+		traceIDRand:  rand.New(rand.NewSource(traceIDSamplingSeed)),
 	}
 
 	if val == "all" {
@@ -203,6 +217,9 @@ func (p *TracePrinter) GenerateTraceLine(s *TraceStat, quoteUri bool) []string {
 			line = append(line, round(s.SumResponseBodyBytes()))
 		case "avg_body":
 			line = append(line, round(s.AvgResponseBodyBytes()))
+		case "trace_id_sample":
+			traceIDSample := s.TraceIDs[p.traceIDRand.Intn(len(s.TraceIDs))]
+			line = append(line, traceIDSample)
 		default: // percentile
 			var n int
 			_, err := fmt.Sscanf(p.keywords[i], "p%d", &n)
