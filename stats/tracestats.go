@@ -71,9 +71,9 @@ func (ts *TraceStats) AggregateTrace() {
 		// keyの生成. ex: uri1__method1__status1::uri2__method2__status2::uri3__method3__status3
 		key := ""
 		for i := 0; i < len(uris); i++ {
-			key += fmt.Sprintf("%s__%s__%d", uris[i], requestDetails[i].Method, requestDetails[i].Status)
+			key += fmt.Sprintf("%s %s %d", requestDetails[i].Method, uris[i], requestDetails[i].Status)
 			if i != len(uris)-1 {
-				key += "::"
+				key += "<br>"
 			}
 		}
 

@@ -80,15 +80,18 @@ func (p *Profiler) Run(sortOptions *stats.SortOptions, parser parsers.Parser) er
 	tsts.SetOptions(p.options)
 	tsts.SetSortOptions(sortOptions)
 
-	printOptions := stats.NewPrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
-	printer := stats.NewPrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, printOptions)
-	if err = printer.Validate(); err != nil {
-		return err
-	}
 	tracePrintOptions := stats.NewTracePrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
 	tracePrinter := stats.NewTracePrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, tracePrintOptions, 0)
-	if err = tracePrinter.Validate(); err != nil {
-		return err
+	printOptions := stats.NewPrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
+	printer := stats.NewPrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, printOptions)
+	if p.options.Trace {
+		if err = tracePrinter.Validate(); err != nil {
+			return err
+		}
+	} else {
+		if err = printer.Validate(); err != nil {
+			return err
+		}
 	}
 
 	// TODO traceは現在loadに非対応
