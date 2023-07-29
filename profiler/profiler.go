@@ -86,7 +86,7 @@ func (p *Profiler) Run(sortOptions *stats.SortOptions, parser parsers.Parser) er
 		return err
 	}
 	tracePrintOptions := stats.NewTracePrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
-	tracePrinter := stats.NewTracePrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, tracePrintOptions)
+	tracePrinter := stats.NewTracePrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, tracePrintOptions, 0)
 	if err = tracePrinter.Validate(); err != nil {
 		return err
 	}
