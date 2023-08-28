@@ -2,15 +2,39 @@ package stats
 
 import (
 	"fmt"
-	"net/url"
-	"regexp"
-	"sort"
-
 	"github.com/tetsuzawa/alp-trace/errors"
 	"github.com/tetsuzawa/alp-trace/helpers"
 	"github.com/tetsuzawa/alp-trace/options"
 	"github.com/tetsuzawa/alp-trace/parsers"
+	"net/url"
+	"regexp"
+	"sort"
+	"strings"
 )
+
+//type traceHints struct {
+//	values map[[]methodUriStatus]int
+//	len    int
+//	mu     sync.RWMutex
+//}
+//
+//func newTraceHints() *traceHints {
+//	return &traceHints{
+//		values: make(map[string]int),
+//	}
+//}
+//
+//func (h *traceHints) loadOrStore(key string) int {
+//	h.mu.Lock()
+//	defer h.mu.Unlock()
+//	_, ok := h.values[key]
+//	if !ok {
+//		h.values[key] = h.len
+//		h.len++
+//	}
+//
+//	return h.values[key]
+//}
 
 type TraceStats struct {
 	hints                          *hints
@@ -38,6 +62,26 @@ type RequestDetail struct {
 	Pos               int
 }
 
+type methodUriStatus struct {
+	Method string
+	Uri    string
+	Status int
+}
+
+func (m methodUriStatus) String() string {
+	return fmt.Sprintf("%s %s %d", m.Method, m.Uri, m.Status)
+}
+
+type methodUriStatuses []methodUriStatus
+
+func (m methodUriStatuses) String() string {
+	var ss []string
+	for _, v := range m {
+		ss = append(ss, v.String())
+	}
+	return strings.Join(ss, "<br>")
+}
+
 func NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStats {
 	return &TraceStats{
 		hints:                          newHints(),
@@ -50,7 +94,7 @@ func NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useRespo
 
 func (ts *TraceStats) AggregateTrace() {
 	for traceID, requestDetails := range ts.traceRequestDetailsMap {
-		uris := make([]string, 0, len(requestDetails))
+		uriGroupedRequestDetails := make([]*RequestDetail, 0, len(requestDetails))
 
 		// リクエストuriのリストを作成
 		// query stringの除去が有効化の場合、除去する
@@ -58,40 +102,47 @@ func (ts *TraceStats) AggregateTrace() {
 			uri := requestDetail.Uri
 			if len(ts.uriMatchingGroups) > 0 {
 				for _, re := range ts.uriMatchingGroups {
-					if ok := re.Match([]byte(uri)); ok {
-						pattern := re.String()
-						uri = pattern
-						break
+					if ok := re.Match([]byte(uri)); !ok {
+						continue
 					}
+					pattern := re.String()
+					uri = pattern
+					break
 				}
 			}
-			uris = append(uris, uri)
+			uriGroupedRequestDetails = append(uriGroupedRequestDetails, &RequestDetail{
+				Uri:               uri,
+				Method:            requestDetail.Method,
+				Status:            requestDetail.Status,
+				ResponseTime:      requestDetail.ResponseTime,
+				RequestBodyBytes:  requestDetail.RequestBodyBytes,
+				ResponseBodyBytes: requestDetail.ResponseBodyBytes,
+				Pos:               requestDetail.Pos,
+			})
 		}
 
-		// keyの生成. ex: uri1__method1__status1::uri2__method2__status2::uri3__method3__status3
-		key := ""
-		for i := 0; i < len(uris); i++ {
-			key += fmt.Sprintf("%s %s %d", requestDetails[i].Method, uris[i], requestDetails[i].Status)
-			if i != len(uris)-1 {
-				key += "<br>"
-			}
+		// keyの生成. ex: GET /foo/bar 200<br>POST /foo/bar 200
+		//key := ""
+		//for i := 0; i < len(uris); i++ {
+		//	key += fmt.Sprintf("%s %s %d", requestDetails[i].Method, uris[i], requestDetails[i].Status)
+		//	if i != len(uris)-1 {
+		//		key += "<br>"
+		//	}
+		//}
+		aggregateKeyBuffer := make([]string, 0, len(uriGroupedRequestDetails))
+		for _, requestDetail := range uriGroupedRequestDetails {
+			//methodUriStatuses += fmt.Sprintf("%s %s %d", requestDetails[i].Method, uris[i], requestDetails[i].Status)
+			aggregateKeyBuffer = append(aggregateKeyBuffer, fmt.Sprintf("%s %s %d", requestDetail.Method, requestDetail.Uri, requestDetail.Status))
 		}
+		aggregateKey := strings.Join(aggregateKeyBuffer, "<br>")
 
-		idx := ts.hints.loadOrStore(key)
+		// 表示制限の数に至っていなければ追加
+		idx := ts.hints.loadOrStore(aggregateKey)
 		if idx >= len(ts.stats) {
-			ts.stats = append(ts.stats, newTraceStat(key, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
+			ts.stats = append(ts.stats, newTraceStat(aggregateKey, uriGroupedRequestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
 		}
 
-		restime := 0.0
-		resBodyBytes := 0.0
-		reqBodyBytes := 0.0
-		// total response time, body bytesの計算
-		for i := 0; i < len(uris); i++ {
-			restime += requestDetails[i].ResponseTime
-			resBodyBytes += requestDetails[i].ResponseBodyBytes
-			reqBodyBytes += requestDetails[i].RequestBodyBytes
-		}
-		ts.stats[idx].Set(traceID, restime, resBodyBytes, reqBodyBytes)
+		ts.stats[idx].Set(traceID, uriGroupedRequestDetails)
 	}
 }
 
@@ -180,32 +231,53 @@ func (ts *TraceStats) SortWithOptions() {
 
 type TraceStat struct {
 	// todo 名前考える
-	// key. ex: uri1__method1__status1::uri2__method2__status2::uri3__method3__status3
+	// ex: GET /foo/bar 200<br>POST /foo/bar 200
 	TraceUriMethodStatus string
 	Cnt                  int
 	ResponseTime         *responseTime
 	RequestBodyBytes     *bodyBytes
 	ResponseBodyBytes    *bodyBytes
-	TraceIDs             []string
+	//RequestDetails       []RequestDetail
+	RequestDetailsStats []*RequestDetailStat
+
+	TraceIDs []string
 }
 
 type traceStats []*TraceStat
 
-func newTraceStat(traceUrlMethodStatus string, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStat {
+func newTraceStat(traceUrlMethodStatus string, requestDetails []*RequestDetail, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStat {
+	rdss := make([]*RequestDetailStat, len(requestDetails))
+	for i := range rdss {
+		rdss[i] = newRequestDetailStat(requestDetails[i], useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile)
+	}
 	return &TraceStat{
 		TraceUriMethodStatus: traceUrlMethodStatus,
 		ResponseTime:         newResponseTime(useResTimePercentile),
 		RequestBodyBytes:     newBodyBytes(useRequestBodyBytesPercentile),
 		ResponseBodyBytes:    newBodyBytes(useResponseBodyBytesPercentile),
+		RequestDetailsStats:  rdss,
 		TraceIDs:             make([]string, 0),
 	}
 }
 
-func (ts *TraceStat) Set(traceID string, restime, reqBodyBytes, resBodyBytes float64) {
+func (ts *TraceStat) Set(traceID string, requestDetails []*RequestDetail) {
+	restime := 0.0
+	resBodyBytes := 0.0
+	reqBodyBytes := 0.0
+	// total response time, body bytesの計算
+	for _, requestDetail := range requestDetails {
+		restime += requestDetail.ResponseTime
+		resBodyBytes += requestDetail.ResponseBodyBytes
+		reqBodyBytes += requestDetail.RequestBodyBytes
+	}
+
 	ts.Cnt++
 	ts.ResponseTime.Set(restime)
 	ts.RequestBodyBytes.Set(reqBodyBytes)
 	ts.ResponseBodyBytes.Set(resBodyBytes)
+	for i := range ts.RequestDetailsStats {
+		ts.RequestDetailsStats[i].Set(requestDetails[i])
+	}
 	ts.TraceIDs = append(ts.TraceIDs, traceID)
 }
 
@@ -618,4 +690,112 @@ func (ts *TraceStats) SortStddevResponseBodyBytes(reverse bool) {
 			return ts.stats[i].StddevResponseBodyBytes() < ts.stats[j].StddevResponseBodyBytes()
 		})
 	}
+}
+
+type RequestDetailStat struct {
+	// todo 名前考える
+	// ex: GET /foo/bar 200<br>POST /foo/bar 200
+	RequestDetail     *RequestDetail
+	Cnt               int
+	ResponseTime      *responseTime
+	RequestBodyBytes  *bodyBytes
+	ResponseBodyBytes *bodyBytes
+}
+
+func newRequestDetailStat(requestDetail *RequestDetail, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *RequestDetailStat {
+	return &RequestDetailStat{
+		RequestDetail:     requestDetail,
+		ResponseTime:      newResponseTime(useResTimePercentile),
+		RequestBodyBytes:  newBodyBytes(useRequestBodyBytesPercentile),
+		ResponseBodyBytes: newBodyBytes(useResponseBodyBytesPercentile),
+	}
+}
+
+func (ts *RequestDetailStat) Set(requestDetail *RequestDetail) {
+	ts.Cnt++
+	ts.ResponseTime.Set(requestDetail.ResponseTime)
+	ts.RequestBodyBytes.Set(requestDetail.RequestBodyBytes)
+	ts.ResponseBodyBytes.Set(requestDetail.ResponseBodyBytes)
+}
+
+func (ts *RequestDetailStat) Count() int {
+	return ts.Cnt
+}
+
+func (ts *RequestDetailStat) StrCount() string {
+	return fmt.Sprint(ts.Cnt)
+}
+
+func (ts *RequestDetailStat) MaxResponseTime() float64 {
+	return ts.ResponseTime.Max
+}
+
+func (ts *RequestDetailStat) MinResponseTime() float64 {
+	return ts.ResponseTime.Min
+}
+
+func (ts *RequestDetailStat) SumResponseTime() float64 {
+	return ts.ResponseTime.Sum
+}
+
+func (ts *RequestDetailStat) AvgResponseTime() float64 {
+	return ts.ResponseTime.Avg(ts.Cnt)
+}
+
+func (ts *RequestDetailStat) PNResponseTime(n int) float64 {
+	return ts.ResponseTime.PN(ts.Cnt, n)
+}
+
+func (ts *RequestDetailStat) StddevResponseTime() float64 {
+	return ts.ResponseTime.Stddev(ts.Cnt)
+}
+
+// request
+func (ts *RequestDetailStat) MaxRequestBodyBytes() float64 {
+	return ts.RequestBodyBytes.Max
+}
+
+func (ts *RequestDetailStat) MinRequestBodyBytes() float64 {
+	return ts.RequestBodyBytes.Min
+}
+
+func (ts *RequestDetailStat) SumRequestBodyBytes() float64 {
+	return ts.RequestBodyBytes.Sum
+}
+
+func (ts *RequestDetailStat) AvgRequestBodyBytes() float64 {
+	return ts.RequestBodyBytes.Avg(ts.Cnt)
+}
+
+func (ts *RequestDetailStat) PNRequestBodyBytes(n int) float64 {
+	return ts.RequestBodyBytes.PN(ts.Cnt, n)
+}
+
+func (ts *RequestDetailStat) StddevRequestBodyBytes() float64 {
+	return ts.RequestBodyBytes.Stddev(ts.Cnt)
+}
+
+// response
+func (ts *RequestDetailStat) MaxResponseBodyBytes() float64 {
+	return ts.RequestBodyBytes.Max
+}
+
+func (ts *RequestDetailStat) MinResponseBodyBytes() float64 {
+	return ts.RequestBodyBytes.Min
+}
+
+func (ts *RequestDetailStat) SumResponseBodyBytes() float64 {
+	return ts.RequestBodyBytes.Sum
+}
+
+func (ts *RequestDetailStat) AvgResponseBodyBytes() float64 {
+	return ts.RequestBodyBytes.Avg(ts.Cnt)
+}
+
+func (ts *RequestDetailStat) PNResponseBodyBytes(n int) float64 {
+	return ts.RequestBodyBytes.PN(ts.Cnt, n)
+}
+
+func (ts *RequestDetailStat) StddevResponseBodyBytes() float64 {
+	return ts.RequestBodyBytes.Stddev(ts.Cnt)
 }
