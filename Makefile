@@ -26,3 +26,4 @@ run_httpd_json:
 
 run_httpd_regexp:
 	docker run -p 18080:80 -v $(PWD)/tmp:/usr/local/apache2/logs -v $(PWD)/dockerfiles/apache/regexp.httpd.conf:/usr/local/apache2/conf/httpd.conf --rm -t httpd:latest
+

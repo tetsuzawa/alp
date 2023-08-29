@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
 	"strings"
+	"text/template"
+	"time"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/tetsuzawa/alp-trace/helpers"
@@ -347,7 +350,7 @@ func (p *TracePrinter) Print(ts, tsTo *TraceStats) {
 //}
 
 func findTraceStatFrom(tsFrom *TraceStats, tsTo *TraceStat) *TraceStat {
-	for _, sFrom := range tsFrom.stats {
+	for _, sFrom := range tsFrom.Stats {
 		if sFrom.TraceUriMethodStatus == tsTo.TraceUriMethodStatus {
 			return sFrom
 		}
@@ -355,17 +358,160 @@ func findTraceStatFrom(tsFrom *TraceStats, tsTo *TraceStat) *TraceStat {
 	return nil
 }
 
+func (p *TracePrinter) printTracePretty(tsFrom, tsTo *TraceStats) {
+	funcMap := template.FuncMap{
+		"currentDate": func() string {
+			return time.Now().Local().Format(time.RFC3339)
+		},
+		"percent": func(a, b interface{}) float64 {
+			ta := anyToFloat64(a)
+			tb := anyToFloat64(b)
+			return ta / tb * 100
+		},
+		"per": func(a, b interface{}) float64 {
+			ta := anyToFloat64(a)
+			tb := anyToFloat64(b)
+			return ta / tb
+		},
+		"rank": func(a int) int {
+			return a + 1
+		},
+		"shortTime": func(v interface{}) string {
+			var format string
+			f := anyToFloat64(v)
+			if f < 0.000000001 {
+				format = "%.0f"
+			} else if f < 0.000001 {
+				f = f * 1000000000
+				format = "%.1fns"
+			} else if f < 0.001 {
+				f = f * 1000000
+				format = "%.1fus"
+			} else if f < 1 {
+				f = f * 1000
+				format = "%.1fms"
+			} else {
+				format = "%.2fs"
+			}
+			return fmt.Sprintf(format, f)
+		},
+		"shortByteInt": func(v interface{}) string {
+			var format string
+			f := anyToFloat64(v)
+			if f >= 1024*1024*1024 {
+				f = f / (1024 * 1024 * 1024)
+				format = "%.0fG"
+			} else if f >= 1024*1024 {
+				f = f / (1024 * 1024)
+				format = "%.0fM"
+			} else if f >= 1024 {
+				f = f / 1024
+				format = "%.0fk"
+			} else {
+				format = "%.0f"
+			}
+			return fmt.Sprintf(format, f)
+		},
+		"shortByte": func(v interface{}) string {
+			var format string
+			f := anyToFloat64(v)
+			if f >= 1024*1024*1024 {
+				f = f / (1024 * 1024 * 1024)
+				format = "%.2fG"
+			} else if f >= 1024*1024 {
+				f = f / (1024 * 1024)
+				format = "%.2fM"
+			} else if f >= 1024 {
+				f = f / 1024
+				format = "%.2fk"
+			} else if f == 0 {
+				format = "%.0f"
+			} else {
+				format = "%.2f"
+			}
+			return fmt.Sprintf(format, f)
+		},
+		"shortInt": func(v interface{}) string {
+			var format string
+			f := anyToFloat64(v)
+			if f >= 1_000_000_000 {
+				f = f / 1_000_000_000
+				format = "%.2fG"
+			} else if f >= 1_000_000 {
+				f = f / 1_000_000
+				format = "%.2fM"
+			} else if f >= 1_000 {
+				f = f / 1_000
+				format = "%.2fk"
+			} else {
+				format = "%.0f"
+			}
+			return fmt.Sprintf(format, f)
+		},
+		"short": func(v interface{}) string {
+			var format string
+			f := anyToFloat64(v)
+			if f >= 1_000_000_000 {
+				f = f / 1_000_000_000
+				format = "%.2fG"
+			} else if f >= 1_000_000 {
+				f = f / 1_000_000
+				format = "%.2fM"
+			} else if f >= 1_000 {
+				f = f / 1_000
+				format = "%.2fk"
+			} else if f == 0 {
+				format = "%.0f"
+			} else {
+				format = "%.2f"
+			}
+			return fmt.Sprintf(format, f)
+		},
+	}
+	tmpl, err := template.New("").Funcs(funcMap).ParseFS(fs, "templates/pretty.tmpl")
+	if err != nil {
+		fmt.Println(err)
+	}
+	for _, tpl := range tmpl.Templates() {
+		fmt.Println(tpl.Name())
+	}
+	if tsTo == nil {
+		err := tmpl.ExecuteTemplate(os.Stdout, "pretty.tmpl", tsFrom)
+		if err != nil {
+			fmt.Println(err)
+		}
+	} else {
+		for _, to := range tsTo.Stats {
+			from := findTraceStatFrom(tsFrom, to)
+
+			if from == nil {
+				err := tmpl.ExecuteTemplate(os.Stdout, "pretty.tmpl", tsTo)
+				if err != nil {
+					fmt.Println(err)
+				}
+			} else {
+				err := tmpl.ExecuteTemplate(os.Stdout, "pretty.tmpl", tsTo)
+				if err != nil {
+					fmt.Println(err)
+				}
+				//return tmpl.ExecuteTemplateWithDiff(w, "report_diff.tmpl", result)
+			}
+		}
+	}
+
+}
+
 func (p *TracePrinter) printTraceTable(tsFrom, tsTo *TraceStats) {
 	table := tablewriter.NewWriter(p.writer)
 	table.SetAutoWrapText(false)
 	table.SetHeader(p.headers)
 	if tsTo == nil {
-		for _, s := range tsFrom.stats {
+		for _, s := range tsFrom.Stats {
 			data := p.GenerateTraceLine(s, false)
 			table.Append(data)
 		}
 	} else {
-		for _, to := range tsTo.stats {
+		for _, to := range tsTo.Stats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			var data []string
@@ -401,12 +547,12 @@ func (p *TracePrinter) printTraceMarkdown(tsFrom, tsTo *TraceStats) {
 	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
 	table.SetCenterSeparator("|")
 	if tsTo == nil {
-		for _, s := range tsFrom.stats {
+		for _, s := range tsFrom.Stats {
 			data := p.GenerateTraceLine(s, false)
 			table.Append(data)
 		}
 	} else {
-		for _, to := range tsTo.stats {
+		for _, to := range tsTo.Stats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			var data []string
@@ -440,12 +586,12 @@ func (p *TracePrinter) printTraceTSV(tsFrom, tsTo *TraceStats) {
 
 	var data []string
 	if tsTo == nil {
-		for _, s := range tsFrom.stats {
+		for _, s := range tsFrom.Stats {
 			data = p.GenerateTraceLine(s, false)
 			fmt.Println(strings.Join(data, "\t"))
 		}
 	} else {
-		for _, to := range tsTo.stats {
+		for _, to := range tsTo.Stats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {
@@ -465,12 +611,12 @@ func (p *TracePrinter) printTraceCSV(tsFrom, tsTo *TraceStats) {
 
 	var data []string
 	if tsTo == nil {
-		for _, s := range tsFrom.stats {
+		for _, s := range tsFrom.Stats {
 			data = p.GenerateTraceLine(s, true)
 			fmt.Println(strings.Join(data, ","))
 		}
 	} else {
-		for _, to := range tsTo.stats {
+		for _, to := range tsTo.Stats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {
@@ -487,11 +633,11 @@ func (p *TracePrinter) printTraceHTML(tsFrom, tsTo *TraceStats) {
 	var data [][]string
 
 	if tsTo == nil {
-		for _, s := range tsFrom.stats {
+		for _, s := range tsFrom.Stats {
 			data = append(data, p.GenerateTraceLine(s, true))
 		}
 	} else {
-		for _, to := range tsTo.stats {
+		for _, to := range tsTo.Stats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {
@@ -503,4 +649,25 @@ func (p *TracePrinter) printTraceHTML(tsFrom, tsTo *TraceStats) {
 	}
 	content, _ := html.RenderTableWithGridJS("alp", p.headers, data, p.printOptions.paginationLimit)
 	fmt.Println(content)
+}
+
+func anyToFloat64(v interface{}) float64 {
+	var f float64
+	switch v.(type) {
+	case int:
+		f = float64(v.(int))
+	case uint:
+		f = float64(v.(uint))
+	case uint64:
+		f = float64(v.(uint64))
+	case *uint64:
+		f = float64(*v.(*uint64))
+	case float64:
+		f = float64(v.(float64))
+	case *float64:
+		f = float64(*v.(*float64))
+	default:
+		fmt.Fprintf(os.Stderr, "unknown type: %T", v)
+	}
+	return f
 }

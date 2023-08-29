@@ -2,11 +2,13 @@ package stats
 
 import (
 	"crypto/md5"
+	"embed"
 	"fmt"
 	"github.com/tetsuzawa/alp-trace/errors"
 	"github.com/tetsuzawa/alp-trace/helpers"
 	"github.com/tetsuzawa/alp-trace/options"
 	"github.com/tetsuzawa/alp-trace/parsers"
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
@@ -41,7 +43,7 @@ type TraceStats struct {
 	hints                          *hints
 	traceRequestDetailsMap         TraceRequestDetailsMap
 	GlobalStat                     *GlobalStat
-	stats                          []*TraceStat
+	Stats                          []*TraceStat
 	useResponseTimePercentile      bool
 	useRequestBodyBytesPercentile  bool
 	useResponseBodyBytesPercentile bool
@@ -89,7 +91,7 @@ func NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useRespo
 		hints:                          newHints(),
 		traceRequestDetailsMap:         make(TraceRequestDetailsMap),
 		GlobalStat:                     newGlobalStat(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile),
-		stats:                          make([]*TraceStat, 0),
+		Stats:                          make([]*TraceStat, 0),
 		useResponseTimePercentile:      useResTimePercentile,
 		useResponseBodyBytesPercentile: useResponseBodyBytesPercentile,
 	}
@@ -141,11 +143,12 @@ func (ts *TraceStats) AggregateTrace() {
 
 		// 表示制限の数に至っていなければ追加
 		idx := ts.hints.loadOrStore(resultStatID)
-		if idx >= len(ts.stats) {
-			ts.stats = append(ts.stats, newTraceStat(resultStatID, requestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
+		if idx >= len(ts.Stats) {
+			ts.Stats = append(ts.Stats, newTraceStat(resultStatID, requestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
 		}
 
-		ts.stats[idx].Set(traceID, requestDetails)
+		ts.GlobalStat.Set(requestDetails)
+		ts.Stats[idx].Set(traceID, requestDetails)
 	}
 }
 
@@ -170,8 +173,8 @@ func (ts *TraceStat) UriWithOptions(decode bool) string {
 	return fmt.Sprintf("%s?%s", unescaped, decoded)
 }
 
-//func (ts *TraceStats) stats() []*TraceStat {
-//	return ts.stats
+//func (ts *TraceStats) Stats() []*TraceStat {
+//	return ts.Stats
 //}
 
 func (ts *TraceStats) CountUris() int {
@@ -216,7 +219,7 @@ func (ts *TraceStats) DoFilter(pstat *parsers.ParsedHTTPStat) (bool, error) {
 func (ts *TraceStats) CountAll() map[string]int {
 	counts := make(map[string]int, 6)
 
-	for _, s := range ts.stats {
+	for _, s := range ts.Stats {
 		counts["count"] += s.Cnt
 	}
 
@@ -442,108 +445,108 @@ func (ts *TraceStats) Sort(sortOptions *SortOptions, reverse bool) {
 
 func (ts *TraceStats) SortCount(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].Count() > ts.stats[j].Count()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].Count() > ts.Stats[j].Count()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].Count() < ts.stats[j].Count()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].Count() < ts.Stats[j].Count()
 		})
 	}
 }
 
-//func (ts *stats) SortUri(reverse bool) {
+//func (ts *Stats) SortUri(reverse bool) {
 //	if reverse {
-//		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats.stats[i].Uri > ts.stats.stats[j].Uri
+//		sort.Slice(ts.Stats, func(i, j int) bool {
+//			return ts.Stats.Stats[i].Uri > ts.Stats.Stats[j].Uri
 //		})
 //	} else {
-//		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats.stats[i].Uri < ts.stats.stats[j].Uri
+//		sort.Slice(ts.Stats, func(i, j int) bool {
+//			return ts.Stats.Stats[i].Uri < ts.Stats.Stats[j].Uri
 //		})
 //	}
 //}
 //
-//func (ts *stats) SortMethod(reverse bool) {
+//func (ts *Stats) SortMethod(reverse bool) {
 //	if reverse {
-//		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats.stats[i].Method > ts.stats.stats[j].Method
+//		sort.Slice(ts.Stats, func(i, j int) bool {
+//			return ts.Stats.Stats[i].Method > ts.Stats.Stats[j].Method
 //		})
 //	} else {
-//		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats.stats[i].Method < ts.stats.stats[j].Method
+//		sort.Slice(ts.Stats, func(i, j int) bool {
+//			return ts.Stats.Stats[i].Method < ts.Stats.Stats[j].Method
 //		})
 //	}
 //}
 
 func (ts *TraceStats) SortMaxResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MaxResponseTime() > ts.stats[j].MaxResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MaxResponseTime() > ts.Stats[j].MaxResponseTime()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MaxResponseTime() < ts.stats[j].MaxResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MaxResponseTime() < ts.Stats[j].MaxResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortMinResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MinResponseTime() > ts.stats[j].MinResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MinResponseTime() > ts.Stats[j].MinResponseTime()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MinResponseTime() < ts.stats[j].MinResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MinResponseTime() < ts.Stats[j].MinResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortSumResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].SumResponseTime() > ts.stats[j].SumResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].SumResponseTime() > ts.Stats[j].SumResponseTime()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].SumResponseTime() < ts.stats[j].SumResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].SumResponseTime() < ts.Stats[j].SumResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortAvgResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].AvgResponseTime() > ts.stats[j].AvgResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].AvgResponseTime() > ts.Stats[j].AvgResponseTime()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].AvgResponseTime() < ts.stats[j].AvgResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].AvgResponseTime() < ts.Stats[j].AvgResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortPNResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].PNResponseTime(ts.sortOptions.percentile) > ts.stats[j].PNResponseTime(ts.sortOptions.percentile)
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].PNResponseTime(ts.sortOptions.percentile) > ts.Stats[j].PNResponseTime(ts.sortOptions.percentile)
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].PNResponseTime(ts.sortOptions.percentile) < ts.stats[j].PNResponseTime(ts.sortOptions.percentile)
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].PNResponseTime(ts.sortOptions.percentile) < ts.Stats[j].PNResponseTime(ts.sortOptions.percentile)
 		})
 	}
 }
 
 func (ts *TraceStats) SortStddevResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].StddevResponseTime() > ts.stats[j].StddevResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].StddevResponseTime() > ts.Stats[j].StddevResponseTime()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].StddevResponseTime() < ts.stats[j].StddevResponseTime()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].StddevResponseTime() < ts.Stats[j].StddevResponseTime()
 		})
 	}
 }
@@ -551,72 +554,72 @@ func (ts *TraceStats) SortStddevResponseTime(reverse bool) {
 // request
 func (ts *TraceStats) SortMaxRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MaxRequestBodyBytes() > ts.stats[j].MaxRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MaxRequestBodyBytes() > ts.Stats[j].MaxRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MaxRequestBodyBytes() < ts.stats[j].MaxRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MaxRequestBodyBytes() < ts.Stats[j].MaxRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortMinRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MinRequestBodyBytes() > ts.stats[j].MinRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MinRequestBodyBytes() > ts.Stats[j].MinRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MinRequestBodyBytes() < ts.stats[j].MinRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MinRequestBodyBytes() < ts.Stats[j].MinRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortSumRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].SumRequestBodyBytes() > ts.stats[j].SumRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].SumRequestBodyBytes() > ts.Stats[j].SumRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].SumRequestBodyBytes() < ts.stats[j].SumRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].SumRequestBodyBytes() < ts.Stats[j].SumRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortAvgRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].AvgRequestBodyBytes() > ts.stats[j].AvgRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].AvgRequestBodyBytes() > ts.Stats[j].AvgRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].AvgRequestBodyBytes() < ts.stats[j].AvgRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].AvgRequestBodyBytes() < ts.Stats[j].AvgRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortPNRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].PNRequestBodyBytes(ts.sortOptions.percentile) > ts.stats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].PNRequestBodyBytes(ts.sortOptions.percentile) > ts.Stats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].PNRequestBodyBytes(ts.sortOptions.percentile) < ts.stats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].PNRequestBodyBytes(ts.sortOptions.percentile) < ts.Stats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
 		})
 	}
 }
 
 func (ts *TraceStats) SortStddevRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].StddevRequestBodyBytes() > ts.stats[j].StddevRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].StddevRequestBodyBytes() > ts.Stats[j].StddevRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].StddevRequestBodyBytes() < ts.stats[j].StddevRequestBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].StddevRequestBodyBytes() < ts.Stats[j].StddevRequestBodyBytes()
 		})
 	}
 }
@@ -624,77 +627,337 @@ func (ts *TraceStats) SortStddevRequestBodyBytes(reverse bool) {
 // response
 func (ts *TraceStats) SortMaxResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MaxResponseBodyBytes() > ts.stats[j].MaxResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MaxResponseBodyBytes() > ts.Stats[j].MaxResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MaxResponseBodyBytes() < ts.stats[j].MaxResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MaxResponseBodyBytes() < ts.Stats[j].MaxResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortMinResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MinResponseBodyBytes() > ts.stats[j].MinResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MinResponseBodyBytes() > ts.Stats[j].MinResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].MinResponseBodyBytes() < ts.stats[j].MinResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].MinResponseBodyBytes() < ts.Stats[j].MinResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortSumResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].SumResponseBodyBytes() > ts.stats[j].SumResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].SumResponseBodyBytes() > ts.Stats[j].SumResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].SumResponseBodyBytes() < ts.stats[j].SumResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].SumResponseBodyBytes() < ts.Stats[j].SumResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortAvgResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].AvgResponseBodyBytes() > ts.stats[j].AvgResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].AvgResponseBodyBytes() > ts.Stats[j].AvgResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].AvgResponseBodyBytes() < ts.stats[j].AvgResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].AvgResponseBodyBytes() < ts.Stats[j].AvgResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortPNResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].PNResponseBodyBytes(ts.sortOptions.percentile) > ts.stats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].PNResponseBodyBytes(ts.sortOptions.percentile) > ts.Stats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].PNResponseBodyBytes(ts.sortOptions.percentile) < ts.stats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].PNResponseBodyBytes(ts.sortOptions.percentile) < ts.Stats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
 		})
 	}
 }
 
 func (ts *TraceStats) SortStddevResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].StddevResponseBodyBytes() > ts.stats[j].StddevResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].StddevResponseBodyBytes() > ts.Stats[j].StddevResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.stats, func(i, j int) bool {
-			return ts.stats[i].StddevResponseBodyBytes() < ts.stats[j].StddevResponseBodyBytes()
+		sort.Slice(ts.Stats, func(i, j int) bool {
+			return ts.Stats[i].StddevResponseBodyBytes() < ts.Stats[j].StddevResponseBodyBytes()
 		})
 	}
 }
 
+// ==========================================================================
+func (ts *TraceStats) widthRank() int {
+	w := getIntWidth(float64(ts.options.Limit))
+	if w < 4 {
+		w = 4
+	}
+	return w
+}
+
+func (ts *TraceStats) DrawRankHeader() string {
+	w := ts.widthRank()
+	s := "Rank"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawRankHR() string {
+	w := ts.widthRank()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) widthID() int {
+	w := len(ts.Stats[len(ts.Stats)-1].ID)
+	if w < 4 {
+		w = 4
+	}
+	return w
+}
+
+func (ts *TraceStats) DrawIDHeader() string {
+	w := ts.widthID()
+	s := "Stats ID"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawIDHR() string {
+	w := ts.widthRank()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatRank(v int) string {
+	w := ts.widthRank()
+	f := fmt.Sprintf("%%%dd", w)
+	return fmt.Sprintf(f, v+1)
+}
+
+func (ts *TraceStats) widthSum() int {
+	w := getIntWidth(ts.GlobalStat.ResponseTime.Sum)
+	if w < 2 {
+		w = 2
+	}
+	// Int.xxxx
+	w += 5
+	return w
+}
+
+func (ts *TraceStats) DrawSumHeader() string {
+	w := ts.widthSum()
+	s := "Sum"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawSumHR() string {
+	w := ts.widthSum()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatSum(v float64) string {
+	w := ts.widthSum()
+	f := fmt.Sprintf("%%%d.4f", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) widthMin() int {
+	w := getIntWidth(ts.GlobalStat.ResponseTime.Min)
+	if w < 2 {
+		w = 2
+	}
+	// Int.xxxx
+	w += 5
+	return w
+}
+
+func (ts *TraceStats) DrawMinHeader() string {
+	w := ts.widthMin()
+	s := "Min"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawMinHR() string {
+	w := ts.widthMin()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatMin(v float64) string {
+	w := ts.widthMin()
+	f := fmt.Sprintf("%%%d.4f", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) widthMax() int {
+	w := getIntWidth(ts.GlobalStat.ResponseTime.Max)
+	if w < 2 {
+		w = 2
+	}
+	// Int.xxxx
+	w += 5
+	return w
+}
+
+func (ts *TraceStats) DrawMaxHeader() string {
+	w := ts.widthMax()
+	s := "Max"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawMaxHR() string {
+	w := ts.widthMax()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatMax(v float64) string {
+	w := ts.widthMin()
+	f := fmt.Sprintf("%%%d.4f", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) widthCount() int {
+	w := getIntWidth(float64(ts.GlobalStat.Cnt))
+	if w < 5 {
+		w = 5
+	}
+	return w
+}
+
+func (ts *TraceStats) FormatCount(v uint) string {
+	w := ts.widthCount()
+	f := fmt.Sprintf("%%%dd", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) DrawCountHeader() string {
+	w := ts.widthCount()
+	s := "Count"
+	return s + strings.Repeat(" ", w-len(s))
+}
+func (ts *TraceStats) DrawCountHR() string {
+	w := ts.widthCount()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) widthAverage() int {
+	w := getIntWidth(ts.GlobalStat.ResponseTime.Avg(ts.GlobalStat.Cnt))
+	if w < 2 {
+		w = 2
+	}
+	// Int.xxxx
+	w += 5
+	return w
+}
+
+func (ts *TraceStats) DrawAverageHeader() string {
+	w := ts.widthAverage()
+	s := "Avg"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawAverageHR() string {
+	w := ts.widthAverage()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatAverage() string {
+	w := ts.widthAverage()
+	f := fmt.Sprintf("%%%d.4f", w)
+	return fmt.Sprintf(f, w)
+}
+
+func (ts *TraceStats) widthP95() int {
+	w := getIntWidth(ts.GlobalStat.ResponseTime.PN(ts.GlobalStat.Cnt, 95))
+	if w < 2 {
+		w = 2
+	}
+	// Int.xxxx
+	w += 5
+	return w
+}
+
+func (ts *TraceStats) DrawP95Header() string {
+	w := ts.widthP95()
+	s := "P95"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawP95HR() string {
+	w := ts.widthP95()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatP95(v float64) string {
+	w := ts.widthMin()
+	f := fmt.Sprintf("%%%d.4f", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) widthMedian() int {
+	w := getIntWidth(ts.GlobalStat.ResponseTime.PN(ts.GlobalStat.Cnt, 50))
+	if w < 2 {
+		w = 2
+	}
+	// Int.xxxx
+	w += 5
+	return w
+}
+
+func (ts *TraceStats) DrawMedianHeader() string {
+	w := ts.widthMedian()
+	s := "Median"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawMedianHR() string {
+	w := ts.widthMedian()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatMedian(v float64) string {
+	w := ts.widthMedian()
+	f := fmt.Sprintf("%%%d.4f", w)
+	return fmt.Sprintf(f, v)
+}
+
+//go:embed templates
+var fs embed.FS
+
+var (
+	reStmtName   = regexp.MustCompile(`^\*ast\.(.*)Stmt$`)
+	rePrefixStmt = regexp.MustCompile(`\s.*`)
+)
+
+type OptLimit struct {
+	count   *int
+	percent *float64
+}
+
+func getIntWidth(v float64) int {
+	w := 1
+
+	abs := math.Abs(v)
+	if abs != v {
+		w++
+	}
+	if abs >= 1.0 {
+		w += int(math.Log10(math.Abs(v)))
+	}
+	return w
+}
+
+// =============================================================================
+
 type GlobalStat struct {
+	Cnt               int
 	ResponseTime      *responseTime
 	RequestBodyBytes  *bodyBytes
 	ResponseBodyBytes *bodyBytes
@@ -708,8 +971,9 @@ func newGlobalStat(useResTimePercentile, useRequestBodyBytesPercentile, useRespo
 	}
 }
 
-func (ts *GlobalStat) Set(idx, traceID string, requestDetails []*RequestDetail) {
+func (ts *GlobalStat) Set(requestDetails []*RequestDetail) {
 	for _, requestDetail := range requestDetails {
+		ts.Cnt++
 		ts.ResponseTime.Set(requestDetail.ResponseTime)
 		ts.RequestBodyBytes.Set(requestDetail.RequestBodyBytes)
 		ts.ResponseBodyBytes.Set(requestDetail.ResponseBodyBytes)
@@ -823,3 +1087,5 @@ func (ts *RequestDetailStat) PNResponseBodyBytes(n int) float64 {
 func (ts *RequestDetailStat) StddevResponseBodyBytes() float64 {
 	return ts.RequestBodyBytes.Stddev(ts.Cnt)
 }
+
+// ==============================

@@ -1,0 +1,29 @@
+{{ $p := . }}
+# Current date: {{ currentDate }}
+{{ with .GlobalStat -}}
+# Overall: {{ shortInt .Cnt }} total
+# Attribute              {{ $p.DrawSumHeader }} {{ $p.DrawMinHeader }} {{ $p.DrawMaxHeader }} {{ $p.DrawAverageHeader }} {{ $p.DrawP95Header }} {{ $p.DrawMedianHeader }}
+# ===================    {{ $p.DrawSumHR }} {{ $p.DrawMinHR }} {{ $p.DrawMaxHR }} {{ $p.DrawAverageHR }} {{ $p.DrawP95HR }} {{ $p.DrawMedianHR }}
+# Response time          {{ shortTime .ResponseTime.Sum }} {{ shortTime .ResponseTime.Min }} {{ shortTime .ResponseTime.Max  }} {{ shortTime (.ResponseTime.Avg .Cnt) }} {{ shortTime (.ResponseTime.PN .Cnt 95 ) }} {{ shortTime (.ResponseTime.PN .Cnt 50) }}
+# Request body bytes     {{ shortByteInt .RequestBodyBytes.Sum | printf "%7s" }} {{ shortByteInt .RequestBodyBytes.Min | printf "%7s" }} {{ shortByteInt .RequestBodyBytes.Max | printf "%7s" }} {{ shortByte .RequestBodyBytes.Avg | printf "%7s" }} {{ shortByteInt .RequestBodyBytes.P95 | printf "%7s" }} {{ shortByteInt .RequestBodyBytes.Med | printf "%7s" }}
+# Response body bytes    {{ shortByteInt .ResponseBodyBytes.Sum | printf "%7s" }} {{ shortByteInt .ResponseBodyBytes.Min | printf "%7s" }} {{ shortByteInt .ResponseBodyBytes.Max | printf "%7s" }} {{ shortByte .ResponseBodyBytes.Avg | printf "%7s" }} {{ shortByteInt .ResponseBodyBytes.P95 | printf "%7s" }} {{ shortByteInt .ResponseBodyBytes.Med | printf "%7s" }}
+{{ end -}}
+{{ $g := .Global }}
+# Profile
+# {{ $p.DrawRankHeader }} {{ $p.DrawIDHeader }} {{ $p.DrawSumHeader }} {{ $p.DrawCountHeader }} ${{ $p.DrawAverageHeader }}
+# {{ $p.DrawRankHR }} {{ $p.DrawIDHR }} {{ $p.DrawSumHR }} {{ $p.DrawCountHR }} {{ $p.DrawAverageHR }}
+{{ range $i, $v := .Stats }}{{ with $v -}}
+# {{ $p.FormatRank $i }} {{ .ID }} {{ .ResponseTime.Sum | $p.FormatSum }} {{ percent .ResponseTime.Sum $g.ResponseTime.Sum | printf "%5.1f%%" }} {{ $p.FormatCount .Cnt }} {{ .ResponseTime.Avg .Cnt | $p.FormatAverage }}
+{{ end }}{{ end -}}
+{{ range $i, $stat := .Stats }}{{ with $stat -}}
+{{ range $j, $v := $stat.RequestDetailsStats }}{{ with $v }}
+# Trace {{ rank $i }}: ID {{ $stat.ID }}
+# Attribute     pct   total     min     max     avg     95%  median
+# ============= === ======= ======= ======= ======= ======= =======
+# Count         {{ percent .TotalRequests $g.TotalRequests | printf "%3.0f" }} {{ printf "%7d" .TotalRequests }}
+{{ with .Metrics.TimeMetrics.Query_time -}}
+# Exec time     {{ percent .Sum $g.Metrics.TimeMetrics.Query_time.Sum | printf "%3.0f" }} {{ shortTime .Sum | printf "%7s" }} {{ shortTime .Min | printf "%7s" }} {{ shortTime .Max | printf "%7s" }} {{ shortTime .Avg | printf "%7s" }} {{ shortTime .P95 | printf "%7s" }} {{ shortTime .Med | printf "%7s" }}
+{{ end -}}
+{{ .Example.Query }}\G
+{{ end }}{{ end -}}
+{{ end }}{{ end -}}

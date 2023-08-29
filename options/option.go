@@ -10,7 +10,7 @@ import (
 
 const (
 	DefaultSortOption      = "count"
-	DefaultFormatOption    = "table"
+	DefaultFormatOption    = "pretty"
 	DefaultLimitOption     = 5000
 	DefaultLocationOption  = "Local"
 	DefaultOutputOption    = "all"
