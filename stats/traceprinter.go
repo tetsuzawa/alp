@@ -327,6 +327,8 @@ func (p *TracePrinter) SetWriter(w io.Writer) {
 
 func (p *TracePrinter) Print(ts, tsTo *TraceStats) {
 	switch p.format {
+	case "pretty":
+		p.printTracePretty(ts, tsTo)
 	case "table":
 		p.printTraceTable(ts, tsTo)
 	case "md", "markdown":

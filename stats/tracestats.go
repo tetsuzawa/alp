@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"crypto/md5"
 	"fmt"
 	"github.com/tetsuzawa/alp-trace/errors"
 	"github.com/tetsuzawa/alp-trace/helpers"
@@ -39,7 +40,8 @@ import (
 type TraceStats struct {
 	hints                          *hints
 	traceRequestDetailsMap         TraceRequestDetailsMap
-	stats                          traceStats
+	GlobalStat                     *GlobalStat
+	stats                          []*TraceStat
 	useResponseTimePercentile      bool
 	useRequestBodyBytesPercentile  bool
 	useResponseBodyBytesPercentile bool
@@ -50,7 +52,7 @@ type TraceStats struct {
 }
 
 // TraceRequestDetailsMap -> trace_id: [method1_uri1_, method2_uri2, ...]
-type TraceRequestDetailsMap map[string][]RequestDetail
+type TraceRequestDetailsMap map[string][]*RequestDetail
 
 type RequestDetail struct {
 	Uri               string
@@ -86,6 +88,7 @@ func NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useRespo
 	return &TraceStats{
 		hints:                          newHints(),
 		traceRequestDetailsMap:         make(TraceRequestDetailsMap),
+		GlobalStat:                     newGlobalStat(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile),
 		stats:                          make([]*TraceStat, 0),
 		useResponseTimePercentile:      useResTimePercentile,
 		useResponseBodyBytesPercentile: useResponseBodyBytesPercentile,
@@ -94,32 +97,32 @@ func NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useRespo
 
 func (ts *TraceStats) AggregateTrace() {
 	for traceID, requestDetails := range ts.traceRequestDetailsMap {
-		uriGroupedRequestDetails := make([]*RequestDetail, 0, len(requestDetails))
+		//requestDetails := make([]*RequestDetail, 0, len(requestDetailss))
 
 		// リクエストuriのリストを作成
 		// query stringの除去が有効化の場合、除去する
-		for _, requestDetail := range requestDetails {
-			uri := requestDetail.Uri
-			if len(ts.uriMatchingGroups) > 0 {
-				for _, re := range ts.uriMatchingGroups {
-					if ok := re.Match([]byte(uri)); !ok {
-						continue
-					}
-					pattern := re.String()
-					uri = pattern
-					break
-				}
-			}
-			uriGroupedRequestDetails = append(uriGroupedRequestDetails, &RequestDetail{
-				Uri:               uri,
-				Method:            requestDetail.Method,
-				Status:            requestDetail.Status,
-				ResponseTime:      requestDetail.ResponseTime,
-				RequestBodyBytes:  requestDetail.RequestBodyBytes,
-				ResponseBodyBytes: requestDetail.ResponseBodyBytes,
-				Pos:               requestDetail.Pos,
-			})
-		}
+		//for _, requestDetail := range requestDetails {
+		//	uri := requestDetail.Uri
+		//	if len(ts.uriMatchingGroups) > 0 {
+		//		for _, re := range ts.uriMatchingGroups {
+		//			if ok := re.Match([]byte(uri)); !ok {
+		//				continue
+		//			}
+		//			pattern := re.String()
+		//			uri = pattern
+		//			break
+		//		}
+		//	}
+		//	requestDetails = append(requestDetails, &RequestDetail{
+		//		Uri:               uri,
+		//		Method:            requestDetail.Method,
+		//		Status:            requestDetail.Status,
+		//		ResponseTime:      requestDetail.ResponseTime,
+		//		RequestBodyBytes:  requestDetail.RequestBodyBytes,
+		//		ResponseBodyBytes: requestDetail.ResponseBodyBytes,
+		//		Pos:               requestDetail.Pos,
+		//	})
+		//}
 
 		// keyの生成. ex: GET /foo/bar 200<br>POST /foo/bar 200
 		//key := ""
@@ -129,20 +132,20 @@ func (ts *TraceStats) AggregateTrace() {
 		//		key += "<br>"
 		//	}
 		//}
-		aggregateKeyBuffer := make([]string, 0, len(uriGroupedRequestDetails))
-		for _, requestDetail := range uriGroupedRequestDetails {
-			//methodUriStatuses += fmt.Sprintf("%s %s %d", requestDetails[i].Method, uris[i], requestDetails[i].Status)
-			aggregateKeyBuffer = append(aggregateKeyBuffer, fmt.Sprintf("%s %s %d", requestDetail.Method, requestDetail.Uri, requestDetail.Status))
+		resultStatIDGenerater := md5.New()
+		for _, requestDetail := range requestDetails {
+			resultStatIDPart := fmt.Sprintf("%s%s%d", requestDetail.Method, requestDetail.Uri, requestDetail.Status)
+			resultStatIDGenerater.Write([]byte(resultStatIDPart))
 		}
-		aggregateKey := strings.Join(aggregateKeyBuffer, "<br>")
+		resultStatID := string(resultStatIDGenerater.Sum(nil))
 
 		// 表示制限の数に至っていなければ追加
-		idx := ts.hints.loadOrStore(aggregateKey)
+		idx := ts.hints.loadOrStore(resultStatID)
 		if idx >= len(ts.stats) {
-			ts.stats = append(ts.stats, newTraceStat(aggregateKey, uriGroupedRequestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
+			ts.stats = append(ts.stats, newTraceStat(resultStatID, requestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
 		}
 
-		ts.stats[idx].Set(traceID, uriGroupedRequestDetails)
+		ts.stats[idx].Set(traceID, requestDetails)
 	}
 }
 
@@ -167,9 +170,9 @@ func (ts *TraceStat) UriWithOptions(decode bool) string {
 	return fmt.Sprintf("%s?%s", unescaped, decoded)
 }
 
-func (ts *TraceStats) Stats() []*TraceStat {
-	return ts.stats
-}
+//func (ts *TraceStats) stats() []*TraceStat {
+//	return ts.stats
+//}
 
 func (ts *TraceStats) CountUris() int {
 	return ts.hints.len
@@ -230,6 +233,7 @@ func (ts *TraceStats) SortWithOptions() {
 // HTTPStatsの拡張
 
 type TraceStat struct {
+	ID string
 	// todo 名前考える
 	// ex: GET /foo/bar 200<br>POST /foo/bar 200
 	TraceUriMethodStatus string
@@ -243,20 +247,18 @@ type TraceStat struct {
 	TraceIDs []string
 }
 
-type traceStats []*TraceStat
-
-func newTraceStat(traceUrlMethodStatus string, requestDetails []*RequestDetail, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStat {
+func newTraceStat(id string, requestDetails []*RequestDetail, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStat {
 	rdss := make([]*RequestDetailStat, len(requestDetails))
 	for i := range rdss {
 		rdss[i] = newRequestDetailStat(requestDetails[i], useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile)
 	}
 	return &TraceStat{
-		TraceUriMethodStatus: traceUrlMethodStatus,
-		ResponseTime:         newResponseTime(useResTimePercentile),
-		RequestBodyBytes:     newBodyBytes(useRequestBodyBytesPercentile),
-		ResponseBodyBytes:    newBodyBytes(useResponseBodyBytesPercentile),
-		RequestDetailsStats:  rdss,
-		TraceIDs:             make([]string, 0),
+		ID:                  id,
+		ResponseTime:        newResponseTime(useResTimePercentile),
+		RequestBodyBytes:    newBodyBytes(useRequestBodyBytesPercentile),
+		ResponseBodyBytes:   newBodyBytes(useResponseBodyBytesPercentile),
+		RequestDetailsStats: rdss,
+		TraceIDs:            make([]string, 0),
 	}
 }
 
@@ -374,7 +376,7 @@ func (ts *TraceStats) AppendTrace(traceID, uri, method string, status int, resti
 		}
 	}
 
-	requestDetail := RequestDetail{
+	requestDetail := &RequestDetail{
 		Uri:               uri,
 		Method:            method,
 		Status:            status,
@@ -453,11 +455,11 @@ func (ts *TraceStats) SortCount(reverse bool) {
 //func (ts *stats) SortUri(reverse bool) {
 //	if reverse {
 //		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats[i].Uri > ts.stats[j].Uri
+//			return ts.stats.stats[i].Uri > ts.stats.stats[j].Uri
 //		})
 //	} else {
 //		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats[i].Uri < ts.stats[j].Uri
+//			return ts.stats.stats[i].Uri < ts.stats.stats[j].Uri
 //		})
 //	}
 //}
@@ -465,11 +467,11 @@ func (ts *TraceStats) SortCount(reverse bool) {
 //func (ts *stats) SortMethod(reverse bool) {
 //	if reverse {
 //		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats[i].Method > ts.stats[j].Method
+//			return ts.stats.stats[i].Method > ts.stats.stats[j].Method
 //		})
 //	} else {
 //		sort.Slice(ts.stats, func(i, j int) bool {
-//			return ts.stats[i].Method < ts.stats[j].Method
+//			return ts.stats.stats[i].Method < ts.stats.stats[j].Method
 //		})
 //	}
 //}
@@ -689,6 +691,28 @@ func (ts *TraceStats) SortStddevResponseBodyBytes(reverse bool) {
 		sort.Slice(ts.stats, func(i, j int) bool {
 			return ts.stats[i].StddevResponseBodyBytes() < ts.stats[j].StddevResponseBodyBytes()
 		})
+	}
+}
+
+type GlobalStat struct {
+	ResponseTime      *responseTime
+	RequestBodyBytes  *bodyBytes
+	ResponseBodyBytes *bodyBytes
+}
+
+func newGlobalStat(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *GlobalStat {
+	return &GlobalStat{
+		ResponseTime:      newResponseTime(useResTimePercentile),
+		RequestBodyBytes:  newBodyBytes(useRequestBodyBytesPercentile),
+		ResponseBodyBytes: newBodyBytes(useResponseBodyBytesPercentile),
+	}
+}
+
+func (ts *GlobalStat) Set(idx, traceID string, requestDetails []*RequestDetail) {
+	for _, requestDetail := range requestDetails {
+		ts.ResponseTime.Set(requestDetail.ResponseTime)
+		ts.RequestBodyBytes.Set(requestDetail.RequestBodyBytes)
+		ts.ResponseBodyBytes.Set(requestDetail.ResponseBodyBytes)
 	}
 }
 
