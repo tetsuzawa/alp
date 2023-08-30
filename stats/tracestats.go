@@ -1,14 +1,15 @@
 package stats
 
 import (
-	"crypto/md5"
 	"embed"
 	"fmt"
+	"github.com/spaolacci/murmur3"
 	"github.com/tetsuzawa/alp-trace/errors"
 	"github.com/tetsuzawa/alp-trace/helpers"
 	"github.com/tetsuzawa/alp-trace/options"
 	"github.com/tetsuzawa/alp-trace/parsers"
 	"math"
+	"math/rand"
 	"net/url"
 	"regexp"
 	"sort"
@@ -43,7 +44,7 @@ type TraceStats struct {
 	hints                          *hints
 	traceRequestDetailsMap         TraceRequestDetailsMap
 	GlobalStat                     *GlobalStat
-	Stats                          []*TraceStat
+	ScenarioStats                  []*ScenarioStat
 	useResponseTimePercentile      bool
 	useRequestBodyBytesPercentile  bool
 	useResponseBodyBytesPercentile bool
@@ -66,32 +67,12 @@ type RequestDetail struct {
 	Pos               int
 }
 
-type methodUriStatus struct {
-	Method string
-	Uri    string
-	Status int
-}
-
-func (m methodUriStatus) String() string {
-	return fmt.Sprintf("%s %s %d", m.Method, m.Uri, m.Status)
-}
-
-type methodUriStatuses []methodUriStatus
-
-func (m methodUriStatuses) String() string {
-	var ss []string
-	for _, v := range m {
-		ss = append(ss, v.String())
-	}
-	return strings.Join(ss, "<br>")
-}
-
 func NewTraceStats(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStats {
 	return &TraceStats{
 		hints:                          newHints(),
 		traceRequestDetailsMap:         make(TraceRequestDetailsMap),
 		GlobalStat:                     newGlobalStat(useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile),
-		Stats:                          make([]*TraceStat, 0),
+		ScenarioStats:                  make([]*ScenarioStat, 0),
 		useResponseTimePercentile:      useResTimePercentile,
 		useResponseBodyBytesPercentile: useResponseBodyBytesPercentile,
 	}
@@ -134,25 +115,25 @@ func (ts *TraceStats) AggregateTrace() {
 		//		key += "<br>"
 		//	}
 		//}
-		resultStatIDGenerater := md5.New()
+		resultStatIDGenerator := murmur3.New32()
 		for _, requestDetail := range requestDetails {
 			resultStatIDPart := fmt.Sprintf("%s%s%d", requestDetail.Method, requestDetail.Uri, requestDetail.Status)
-			resultStatIDGenerater.Write([]byte(resultStatIDPart))
+			resultStatIDGenerator.Write([]byte(resultStatIDPart))
 		}
-		resultStatID := string(resultStatIDGenerater.Sum(nil))
+		resultStatID := fmt.Sprintf("%x", resultStatIDGenerator.Sum(nil))
 
 		// 表示制限の数に至っていなければ追加
 		idx := ts.hints.loadOrStore(resultStatID)
-		if idx >= len(ts.Stats) {
-			ts.Stats = append(ts.Stats, newTraceStat(resultStatID, requestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
+		if len(ts.ScenarioStats) <= idx {
+			ts.ScenarioStats = append(ts.ScenarioStats, newTraceStat(resultStatID, requestDetails, ts.useResponseTimePercentile, ts.useRequestBodyBytesPercentile, ts.useResponseBodyBytesPercentile))
 		}
 
 		ts.GlobalStat.Set(requestDetails)
-		ts.Stats[idx].Set(traceID, requestDetails)
+		ts.ScenarioStats[idx].Set(traceID, requestDetails)
 	}
 }
 
-func (ts *TraceStat) UriWithOptions(decode bool) string {
+func (ts *ScenarioStat) UriWithOptions(decode bool) string {
 	if !decode {
 		return ts.TraceUriMethodStatus
 	}
@@ -173,8 +154,8 @@ func (ts *TraceStat) UriWithOptions(decode bool) string {
 	return fmt.Sprintf("%s?%s", unescaped, decoded)
 }
 
-//func (ts *TraceStats) Stats() []*TraceStat {
-//	return ts.Stats
+//func (ts *TraceStats) ScenarioStats() []*ScenarioStat {
+//	return ts.ScenarioStats
 //}
 
 func (ts *TraceStats) CountUris() int {
@@ -219,7 +200,7 @@ func (ts *TraceStats) DoFilter(pstat *parsers.ParsedHTTPStat) (bool, error) {
 func (ts *TraceStats) CountAll() map[string]int {
 	counts := make(map[string]int, 6)
 
-	for _, s := range ts.Stats {
+	for _, s := range ts.ScenarioStats {
 		counts["count"] += s.Cnt
 	}
 
@@ -235,7 +216,7 @@ func (ts *TraceStats) SortWithOptions() {
 
 // HTTPStatsの拡張
 
-type TraceStat struct {
+type ScenarioStat struct {
 	ID string
 	// todo 名前考える
 	// ex: GET /foo/bar 200<br>POST /foo/bar 200
@@ -247,25 +228,27 @@ type TraceStat struct {
 	//RequestDetails       []RequestDetail
 	RequestDetailsStats []*RequestDetailStat
 
-	TraceIDs []string
+	TraceIDs    []string
+	traceIDRand *rand.Rand
 }
 
-func newTraceStat(id string, requestDetails []*RequestDetail, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *TraceStat {
+func newTraceStat(id string, requestDetails []*RequestDetail, useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile bool) *ScenarioStat {
 	rdss := make([]*RequestDetailStat, len(requestDetails))
 	for i := range rdss {
 		rdss[i] = newRequestDetailStat(requestDetails[i], useResTimePercentile, useRequestBodyBytesPercentile, useResponseBodyBytesPercentile)
 	}
-	return &TraceStat{
+	return &ScenarioStat{
 		ID:                  id,
 		ResponseTime:        newResponseTime(useResTimePercentile),
 		RequestBodyBytes:    newBodyBytes(useRequestBodyBytesPercentile),
 		ResponseBodyBytes:   newBodyBytes(useResponseBodyBytesPercentile),
 		RequestDetailsStats: rdss,
 		TraceIDs:            make([]string, 0),
+		traceIDRand:         rand.New(rand.NewSource(0)),
 	}
 }
 
-func (ts *TraceStat) Set(traceID string, requestDetails []*RequestDetail) {
+func (ts *ScenarioStat) Set(traceID string, requestDetails []*RequestDetail) {
 	restime := 0.0
 	resBodyBytes := 0.0
 	reqBodyBytes := 0.0
@@ -286,86 +269,90 @@ func (ts *TraceStat) Set(traceID string, requestDetails []*RequestDetail) {
 	ts.TraceIDs = append(ts.TraceIDs, traceID)
 }
 
-func (ts *TraceStat) Count() int {
+func (ts *ScenarioStat) Count() int {
 	return ts.Cnt
 }
 
-func (ts *TraceStat) StrCount() string {
+func (ts *ScenarioStat) StrCount() string {
 	return fmt.Sprint(ts.Cnt)
 }
 
-func (ts *TraceStat) MaxResponseTime() float64 {
+func (ts *ScenarioStat) MaxResponseTime() float64 {
 	return ts.ResponseTime.Max
 }
 
-func (ts *TraceStat) MinResponseTime() float64 {
+func (ts *ScenarioStat) MinResponseTime() float64 {
 	return ts.ResponseTime.Min
 }
 
-func (ts *TraceStat) SumResponseTime() float64 {
+func (ts *ScenarioStat) SumResponseTime() float64 {
 	return ts.ResponseTime.Sum
 }
 
-func (ts *TraceStat) AvgResponseTime() float64 {
+func (ts *ScenarioStat) AvgResponseTime() float64 {
 	return ts.ResponseTime.Avg(ts.Cnt)
 }
 
-func (ts *TraceStat) PNResponseTime(n int) float64 {
+func (ts *ScenarioStat) PNResponseTime(n int) float64 {
 	return ts.ResponseTime.PN(ts.Cnt, n)
 }
 
-func (ts *TraceStat) StddevResponseTime() float64 {
+func (ts *ScenarioStat) StddevResponseTime() float64 {
 	return ts.ResponseTime.Stddev(ts.Cnt)
 }
 
 // request
-func (ts *TraceStat) MaxRequestBodyBytes() float64 {
+func (ts *ScenarioStat) MaxRequestBodyBytes() float64 {
 	return ts.RequestBodyBytes.Max
 }
 
-func (ts *TraceStat) MinRequestBodyBytes() float64 {
+func (ts *ScenarioStat) MinRequestBodyBytes() float64 {
 	return ts.RequestBodyBytes.Min
 }
 
-func (ts *TraceStat) SumRequestBodyBytes() float64 {
+func (ts *ScenarioStat) SumRequestBodyBytes() float64 {
 	return ts.RequestBodyBytes.Sum
 }
 
-func (ts *TraceStat) AvgRequestBodyBytes() float64 {
+func (ts *ScenarioStat) AvgRequestBodyBytes() float64 {
 	return ts.RequestBodyBytes.Avg(ts.Cnt)
 }
 
-func (ts *TraceStat) PNRequestBodyBytes(n int) float64 {
+func (ts *ScenarioStat) PNRequestBodyBytes(n int) float64 {
 	return ts.RequestBodyBytes.PN(ts.Cnt, n)
 }
 
-func (ts *TraceStat) StddevRequestBodyBytes() float64 {
+func (ts *ScenarioStat) StddevRequestBodyBytes() float64 {
 	return ts.RequestBodyBytes.Stddev(ts.Cnt)
 }
 
 // response
-func (ts *TraceStat) MaxResponseBodyBytes() float64 {
+func (ts *ScenarioStat) MaxResponseBodyBytes() float64 {
 	return ts.RequestBodyBytes.Max
 }
 
-func (ts *TraceStat) MinResponseBodyBytes() float64 {
+func (ts *ScenarioStat) MinResponseBodyBytes() float64 {
 	return ts.RequestBodyBytes.Min
 }
 
-func (ts *TraceStat) SumResponseBodyBytes() float64 {
+func (ts *ScenarioStat) SumResponseBodyBytes() float64 {
 	return ts.RequestBodyBytes.Sum
 }
 
-func (ts *TraceStat) AvgResponseBodyBytes() float64 {
+func (ts *ScenarioStat) AvgResponseBodyBytes() float64 {
 	return ts.RequestBodyBytes.Avg(ts.Cnt)
 }
 
-func (ts *TraceStat) PNResponseBodyBytes(n int) float64 {
+func (ts *ScenarioStat) PNResponseBodyBytes(n int) float64 {
 	return ts.RequestBodyBytes.PN(ts.Cnt, n)
 }
 
-func (ts *TraceStat) StddevResponseBodyBytes() float64 {
+func (ts *ScenarioStat) StddevResponseBodyBytes() float64 {
 	return ts.RequestBodyBytes.Stddev(ts.Cnt)
+}
+
+func (ts *ScenarioStat) RandomTraceID() string {
+	return ts.TraceIDs[ts.traceIDRand.Intn(len(ts.TraceIDs))]
 }
 
 func (ts *TraceStats) AppendTrace(traceID, uri, method string, status int, restime, resBodyBytes, reqBodyBytes float64, pos int) {
@@ -445,108 +432,108 @@ func (ts *TraceStats) Sort(sortOptions *SortOptions, reverse bool) {
 
 func (ts *TraceStats) SortCount(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].Count() > ts.Stats[j].Count()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].Count() > ts.ScenarioStats[j].Count()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].Count() < ts.Stats[j].Count()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].Count() < ts.ScenarioStats[j].Count()
 		})
 	}
 }
 
-//func (ts *Stats) SortUri(reverse bool) {
+//func (ts *ScenarioStats) SortUri(reverse bool) {
 //	if reverse {
-//		sort.Slice(ts.Stats, func(i, j int) bool {
-//			return ts.Stats.Stats[i].Uri > ts.Stats.Stats[j].Uri
+//		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+//			return ts.ScenarioStats.ScenarioStats[i].Uri > ts.ScenarioStats.ScenarioStats[j].Uri
 //		})
 //	} else {
-//		sort.Slice(ts.Stats, func(i, j int) bool {
-//			return ts.Stats.Stats[i].Uri < ts.Stats.Stats[j].Uri
+//		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+//			return ts.ScenarioStats.ScenarioStats[i].Uri < ts.ScenarioStats.ScenarioStats[j].Uri
 //		})
 //	}
 //}
 //
-//func (ts *Stats) SortMethod(reverse bool) {
+//func (ts *ScenarioStats) SortMethod(reverse bool) {
 //	if reverse {
-//		sort.Slice(ts.Stats, func(i, j int) bool {
-//			return ts.Stats.Stats[i].Method > ts.Stats.Stats[j].Method
+//		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+//			return ts.ScenarioStats.ScenarioStats[i].Method > ts.ScenarioStats.ScenarioStats[j].Method
 //		})
 //	} else {
-//		sort.Slice(ts.Stats, func(i, j int) bool {
-//			return ts.Stats.Stats[i].Method < ts.Stats.Stats[j].Method
+//		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+//			return ts.ScenarioStats.ScenarioStats[i].Method < ts.ScenarioStats.ScenarioStats[j].Method
 //		})
 //	}
 //}
 
 func (ts *TraceStats) SortMaxResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MaxResponseTime() > ts.Stats[j].MaxResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MaxResponseTime() > ts.ScenarioStats[j].MaxResponseTime()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MaxResponseTime() < ts.Stats[j].MaxResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MaxResponseTime() < ts.ScenarioStats[j].MaxResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortMinResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MinResponseTime() > ts.Stats[j].MinResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MinResponseTime() > ts.ScenarioStats[j].MinResponseTime()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MinResponseTime() < ts.Stats[j].MinResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MinResponseTime() < ts.ScenarioStats[j].MinResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortSumResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].SumResponseTime() > ts.Stats[j].SumResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].SumResponseTime() > ts.ScenarioStats[j].SumResponseTime()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].SumResponseTime() < ts.Stats[j].SumResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].SumResponseTime() < ts.ScenarioStats[j].SumResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortAvgResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].AvgResponseTime() > ts.Stats[j].AvgResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].AvgResponseTime() > ts.ScenarioStats[j].AvgResponseTime()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].AvgResponseTime() < ts.Stats[j].AvgResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].AvgResponseTime() < ts.ScenarioStats[j].AvgResponseTime()
 		})
 	}
 }
 
 func (ts *TraceStats) SortPNResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].PNResponseTime(ts.sortOptions.percentile) > ts.Stats[j].PNResponseTime(ts.sortOptions.percentile)
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].PNResponseTime(ts.sortOptions.percentile) > ts.ScenarioStats[j].PNResponseTime(ts.sortOptions.percentile)
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].PNResponseTime(ts.sortOptions.percentile) < ts.Stats[j].PNResponseTime(ts.sortOptions.percentile)
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].PNResponseTime(ts.sortOptions.percentile) < ts.ScenarioStats[j].PNResponseTime(ts.sortOptions.percentile)
 		})
 	}
 }
 
 func (ts *TraceStats) SortStddevResponseTime(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].StddevResponseTime() > ts.Stats[j].StddevResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].StddevResponseTime() > ts.ScenarioStats[j].StddevResponseTime()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].StddevResponseTime() < ts.Stats[j].StddevResponseTime()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].StddevResponseTime() < ts.ScenarioStats[j].StddevResponseTime()
 		})
 	}
 }
@@ -554,72 +541,72 @@ func (ts *TraceStats) SortStddevResponseTime(reverse bool) {
 // request
 func (ts *TraceStats) SortMaxRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MaxRequestBodyBytes() > ts.Stats[j].MaxRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MaxRequestBodyBytes() > ts.ScenarioStats[j].MaxRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MaxRequestBodyBytes() < ts.Stats[j].MaxRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MaxRequestBodyBytes() < ts.ScenarioStats[j].MaxRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortMinRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MinRequestBodyBytes() > ts.Stats[j].MinRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MinRequestBodyBytes() > ts.ScenarioStats[j].MinRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MinRequestBodyBytes() < ts.Stats[j].MinRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MinRequestBodyBytes() < ts.ScenarioStats[j].MinRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortSumRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].SumRequestBodyBytes() > ts.Stats[j].SumRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].SumRequestBodyBytes() > ts.ScenarioStats[j].SumRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].SumRequestBodyBytes() < ts.Stats[j].SumRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].SumRequestBodyBytes() < ts.ScenarioStats[j].SumRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortAvgRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].AvgRequestBodyBytes() > ts.Stats[j].AvgRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].AvgRequestBodyBytes() > ts.ScenarioStats[j].AvgRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].AvgRequestBodyBytes() < ts.Stats[j].AvgRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].AvgRequestBodyBytes() < ts.ScenarioStats[j].AvgRequestBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortPNRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].PNRequestBodyBytes(ts.sortOptions.percentile) > ts.Stats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].PNRequestBodyBytes(ts.sortOptions.percentile) > ts.ScenarioStats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].PNRequestBodyBytes(ts.sortOptions.percentile) < ts.Stats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].PNRequestBodyBytes(ts.sortOptions.percentile) < ts.ScenarioStats[j].PNRequestBodyBytes(ts.sortOptions.percentile)
 		})
 	}
 }
 
 func (ts *TraceStats) SortStddevRequestBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].StddevRequestBodyBytes() > ts.Stats[j].StddevRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].StddevRequestBodyBytes() > ts.ScenarioStats[j].StddevRequestBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].StddevRequestBodyBytes() < ts.Stats[j].StddevRequestBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].StddevRequestBodyBytes() < ts.ScenarioStats[j].StddevRequestBodyBytes()
 		})
 	}
 }
@@ -627,72 +614,72 @@ func (ts *TraceStats) SortStddevRequestBodyBytes(reverse bool) {
 // response
 func (ts *TraceStats) SortMaxResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MaxResponseBodyBytes() > ts.Stats[j].MaxResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MaxResponseBodyBytes() > ts.ScenarioStats[j].MaxResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MaxResponseBodyBytes() < ts.Stats[j].MaxResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MaxResponseBodyBytes() < ts.ScenarioStats[j].MaxResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortMinResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MinResponseBodyBytes() > ts.Stats[j].MinResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MinResponseBodyBytes() > ts.ScenarioStats[j].MinResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].MinResponseBodyBytes() < ts.Stats[j].MinResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].MinResponseBodyBytes() < ts.ScenarioStats[j].MinResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortSumResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].SumResponseBodyBytes() > ts.Stats[j].SumResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].SumResponseBodyBytes() > ts.ScenarioStats[j].SumResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].SumResponseBodyBytes() < ts.Stats[j].SumResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].SumResponseBodyBytes() < ts.ScenarioStats[j].SumResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortAvgResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].AvgResponseBodyBytes() > ts.Stats[j].AvgResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].AvgResponseBodyBytes() > ts.ScenarioStats[j].AvgResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].AvgResponseBodyBytes() < ts.Stats[j].AvgResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].AvgResponseBodyBytes() < ts.ScenarioStats[j].AvgResponseBodyBytes()
 		})
 	}
 }
 
 func (ts *TraceStats) SortPNResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].PNResponseBodyBytes(ts.sortOptions.percentile) > ts.Stats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].PNResponseBodyBytes(ts.sortOptions.percentile) > ts.ScenarioStats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].PNResponseBodyBytes(ts.sortOptions.percentile) < ts.Stats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].PNResponseBodyBytes(ts.sortOptions.percentile) < ts.ScenarioStats[j].PNResponseBodyBytes(ts.sortOptions.percentile)
 		})
 	}
 }
 
 func (ts *TraceStats) SortStddevResponseBodyBytes(reverse bool) {
 	if reverse {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].StddevResponseBodyBytes() > ts.Stats[j].StddevResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].StddevResponseBodyBytes() > ts.ScenarioStats[j].StddevResponseBodyBytes()
 		})
 	} else {
-		sort.Slice(ts.Stats, func(i, j int) bool {
-			return ts.Stats[i].StddevResponseBodyBytes() < ts.Stats[j].StddevResponseBodyBytes()
+		sort.Slice(ts.ScenarioStats, func(i, j int) bool {
+			return ts.ScenarioStats[i].StddevResponseBodyBytes() < ts.ScenarioStats[j].StddevResponseBodyBytes()
 		})
 	}
 }
@@ -717,29 +704,83 @@ func (ts *TraceStats) DrawRankHR() string {
 	return strings.Repeat("=", w)
 }
 
-func (ts *TraceStats) widthID() int {
-	w := len(ts.Stats[len(ts.Stats)-1].ID)
-	if w < 4 {
-		w = 4
-	}
-	return w
-}
-
-func (ts *TraceStats) DrawIDHeader() string {
-	w := ts.widthID()
-	s := "Stats ID"
-	return s + strings.Repeat(" ", w-len(s))
-}
-
-func (ts *TraceStats) DrawIDHR() string {
-	w := ts.widthRank()
-	return strings.Repeat("=", w)
-}
-
 func (ts *TraceStats) FormatRank(v int) string {
 	w := ts.widthRank()
 	f := fmt.Sprintf("%%%dd", w)
 	return fmt.Sprintf(f, v+1)
+}
+
+func (ts *TraceStats) widthMethod() int {
+	w := 5
+	return w
+}
+
+func (ts *TraceStats) widthUri() int {
+	maxLen := -1
+	for _, s := range ts.ScenarioStats {
+		for _, r := range s.RequestDetailsStats {
+			if len(r.RequestDetail.Uri) > maxLen {
+				maxLen = len(r.RequestDetail.Uri)
+			}
+		}
+	}
+	w := maxLen
+	if w < 7 {
+		w = 7
+	}
+	return w
+}
+
+func (ts *TraceStats) widthStatus() int {
+	w := 3
+	return w
+}
+
+func (ts *TraceStats) widthRequest() int {
+	w := ts.widthMethod() + 1 + ts.widthUri() + 1 + ts.widthStatus()
+	return w
+}
+
+func (ts *TraceStats) DrawRequestHeader() string {
+	w := ts.widthRequest()
+	s := "Request"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawRequestHR() string {
+	w := ts.widthRequest()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatRequest(method, uri string, status int) string {
+	wm, wu, ws := ts.widthMethod(), ts.widthUri(), ts.widthStatus()
+	f := fmt.Sprintf("%%-%ds %%-%ds %%%dd", wm, wu, ws)
+	return fmt.Sprintf(f, method, uri, status)
+}
+
+func (ts *TraceStats) widthScenarioID() int {
+	w := len(ts.ScenarioStats[len(ts.ScenarioStats)-1].ID)
+	if w < 11 {
+		w = 11
+	}
+	return w
+}
+
+func (ts *TraceStats) DrawScenarioIDHeader() string {
+	w := ts.widthScenarioID()
+	s := "Scenario ID"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawScenarioIDHR() string {
+	w := ts.widthScenarioID()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatScenarioID(v string) string {
+	w := ts.widthScenarioID()
+	f := fmt.Sprintf("%%-%ds", w)
+	return fmt.Sprintf(f, v)
 }
 
 func (ts *TraceStats) widthSum() int {
@@ -748,24 +789,48 @@ func (ts *TraceStats) widthSum() int {
 		w = 2
 	}
 	// Int.xxxx
-	w += 5
+	w += 2
 	return w
 }
 
 func (ts *TraceStats) DrawSumHeader() string {
-	w := ts.widthSum()
+	// for percentages
+	w := ts.widthSum() + 7
 	s := "Sum"
 	return s + strings.Repeat(" ", w-len(s))
 }
 
 func (ts *TraceStats) DrawSumHR() string {
-	w := ts.widthSum()
+	// for percentages
+	w := ts.widthSum() + 7
 	return strings.Repeat("=", w)
 }
 
 func (ts *TraceStats) FormatSum(v float64) string {
 	w := ts.widthSum()
-	f := fmt.Sprintf("%%%d.4f", w)
+	f := fmt.Sprintf("%%%d.1f", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) widthRate() int {
+	w := 7
+	return w
+}
+
+func (ts *TraceStats) DrawRateHeader() string {
+	w := ts.widthRate()
+	s := "Rate"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawRateHR() string {
+	w := ts.widthRate()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatRate(v float64) string {
+	w := ts.widthRate()
+	f := fmt.Sprintf("%%%d.0f", w)
 	return fmt.Sprintf(f, v)
 }
 
@@ -831,7 +896,7 @@ func (ts *TraceStats) widthCount() int {
 	return w
 }
 
-func (ts *TraceStats) FormatCount(v uint) string {
+func (ts *TraceStats) FormatCount(v int) string {
 	w := ts.widthCount()
 	f := fmt.Sprintf("%%%dd", w)
 	return fmt.Sprintf(f, v)
@@ -848,12 +913,11 @@ func (ts *TraceStats) DrawCountHR() string {
 }
 
 func (ts *TraceStats) widthAverage() int {
-	w := getIntWidth(ts.GlobalStat.ResponseTime.Avg(ts.GlobalStat.Cnt))
-	if w < 2 {
-		w = 2
-	}
-	// Int.xxxx
-	w += 5
+	//w := getIntWidth(ts.GlobalStat.ResponseTime.Avg(ts.GlobalStat.Cnt))
+	//if w < 4 {
+	//	w = 4
+	//}
+	w := 5
 	return w
 }
 
@@ -868,10 +932,32 @@ func (ts *TraceStats) DrawAverageHR() string {
 	return strings.Repeat("=", w)
 }
 
-func (ts *TraceStats) FormatAverage() string {
+func (ts *TraceStats) FormatAverage(v float64) string {
 	w := ts.widthAverage()
+	f := fmt.Sprintf("%%%d.2f", w)
+	return fmt.Sprintf(f, v)
+}
+
+func (ts *TraceStats) widthRPCount() int {
+	w := 7
+	return w
+}
+
+func (ts *TraceStats) DrawRPCountHeader() string {
+	w := ts.widthRPCount()
+	s := "R/Count"
+	return s + strings.Repeat(" ", w-len(s))
+}
+
+func (ts *TraceStats) DrawRPCountHR() string {
+	w := ts.widthRPCount()
+	return strings.Repeat("=", w)
+}
+
+func (ts *TraceStats) FormatRPCount(v float64) string {
+	w := ts.widthRPCount()
 	f := fmt.Sprintf("%%%d.4f", w)
-	return fmt.Sprintf(f, w)
+	return fmt.Sprintf(f, v)
 }
 
 func (ts *TraceStats) widthP95() int {
@@ -897,7 +983,7 @@ func (ts *TraceStats) DrawP95HR() string {
 
 func (ts *TraceStats) FormatP95(v float64) string {
 	w := ts.widthMin()
-	f := fmt.Sprintf("%%%d.4f", w)
+	f := fmt.Sprintf("%%%d.2f", w)
 	return fmt.Sprintf(f, v)
 }
 
@@ -924,7 +1010,7 @@ func (ts *TraceStats) DrawMedianHR() string {
 
 func (ts *TraceStats) FormatMedian(v float64) string {
 	w := ts.widthMedian()
-	f := fmt.Sprintf("%%%d.4f", w)
+	f := fmt.Sprintf("%%%d.2f", w)
 	return fmt.Sprintf(f, v)
 }
 

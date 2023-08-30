@@ -81,7 +81,7 @@ func (p *Profiler) Run(sortOptions *stats.SortOptions, parser parsers.Parser) er
 	tsts.SetSortOptions(sortOptions)
 
 	tracePrintOptions := stats.NewTracePrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
-	tracePrinter := stats.NewTracePrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, tracePrintOptions, 0)
+	tracePrinter := stats.NewTracePrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, tracePrintOptions)
 	printOptions := stats.NewPrintOptions(p.options.NoHeaders, p.options.ShowFooters, p.options.DecodeUri, p.options.PaginationLimit)
 	printer := stats.NewPrinter(p.outWriter, p.options.Output, p.options.Format, p.options.Percentiles, printOptions)
 	if p.options.Trace {
@@ -177,9 +177,9 @@ Loop:
 			tsts.AppendTrace(s.TraceID, s.Uri, s.Method, s.Status, s.ResponseTime, s.BodyBytes, 0, parser.ReadBytes())
 		}
 
-		if sts.CountUris() > p.options.Limit {
-			return fmt.Errorf("Too many URI's (%d or less)", p.options.Limit)
-		}
+		//if sts.CountUris() > p.options.Limit {
+		//	return fmt.Errorf("Too many URI's (%d or less)", p.options.Limit)
+		//}
 	}
 
 	if p.options.Trace {

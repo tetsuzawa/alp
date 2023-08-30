@@ -3,7 +3,6 @@ package stats
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"strings"
 	"text/template"
@@ -136,17 +135,15 @@ type TracePrinter struct {
 	headersMap   map[string]string
 	writer       io.Writer
 	all          bool
-	traceIDRand  *rand.Rand
 }
 
-func NewTracePrinter(w io.Writer, val, format string, percentiles []int, printOptions *TracePrintOptions, traceIDSamplingSeed int64) *TracePrinter {
+func NewTracePrinter(w io.Writer, val, format string, percentiles []int, printOptions *TracePrintOptions) *TracePrinter {
 	p := &TracePrinter{
 		format:       format,
 		percentiles:  percentiles,
 		headersMap:   traceHeadersMap(percentiles),
 		writer:       w,
 		printOptions: printOptions,
-		traceIDRand:  rand.New(rand.NewSource(traceIDSamplingSeed)),
 	}
 
 	if val == "all" {
@@ -188,7 +185,7 @@ func (p *TracePrinter) Validate() error {
 	return nil
 }
 
-func (p *TracePrinter) GenerateTraceLine(s *TraceStat, quoteUri bool) []string {
+func (p *TracePrinter) GenerateTraceLine(s *ScenarioStat, quoteUri bool) []string {
 	keyLen := len(p.keywords)
 	line := make([]string, 0, keyLen)
 
@@ -221,7 +218,7 @@ func (p *TracePrinter) GenerateTraceLine(s *TraceStat, quoteUri bool) []string {
 		case "avg_body":
 			line = append(line, round(s.AvgResponseBodyBytes()))
 		case "trace_id_sample":
-			traceIDSample := s.TraceIDs[p.traceIDRand.Intn(len(s.TraceIDs))]
+			traceIDSample := s.RandomTraceID()
 			line = append(line, traceIDSample)
 		default: // percentile
 			var n int
@@ -236,7 +233,7 @@ func (p *TracePrinter) GenerateTraceLine(s *TraceStat, quoteUri bool) []string {
 	return line
 }
 
-func (p *TracePrinter) GenerateTraceLineWithDiff(from, to *TraceStat, quoteUri bool) []string {
+func (p *TracePrinter) GenerateTraceLineWithDiff(from, to *ScenarioStat, quoteUri bool) []string {
 	keyLen := len(p.keywords)
 	line := make([]string, 0, keyLen)
 
@@ -349,8 +346,8 @@ func (p *TracePrinter) Print(ts, tsTo *TraceStats) {
 //	return fmt.Sprintf("%.3f", num)
 //}
 
-func findTraceStatFrom(tsFrom *TraceStats, tsTo *TraceStat) *TraceStat {
-	for _, sFrom := range tsFrom.Stats {
+func findTraceStatFrom(tsFrom *TraceStats, tsTo *ScenarioStat) *ScenarioStat {
+	for _, sFrom := range tsFrom.ScenarioStats {
 		if sFrom.TraceUriMethodStatus == tsTo.TraceUriMethodStatus {
 			return sFrom
 		}
@@ -481,7 +478,7 @@ func (p *TracePrinter) printTracePretty(tsFrom, tsTo *TraceStats) {
 			fmt.Println(err)
 		}
 	} else {
-		for _, to := range tsTo.Stats {
+		for _, to := range tsTo.ScenarioStats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {
@@ -506,12 +503,12 @@ func (p *TracePrinter) printTraceTable(tsFrom, tsTo *TraceStats) {
 	table.SetAutoWrapText(false)
 	table.SetHeader(p.headers)
 	if tsTo == nil {
-		for _, s := range tsFrom.Stats {
+		for _, s := range tsFrom.ScenarioStats {
 			data := p.GenerateTraceLine(s, false)
 			table.Append(data)
 		}
 	} else {
-		for _, to := range tsTo.Stats {
+		for _, to := range tsTo.ScenarioStats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			var data []string
@@ -547,12 +544,12 @@ func (p *TracePrinter) printTraceMarkdown(tsFrom, tsTo *TraceStats) {
 	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
 	table.SetCenterSeparator("|")
 	if tsTo == nil {
-		for _, s := range tsFrom.Stats {
+		for _, s := range tsFrom.ScenarioStats {
 			data := p.GenerateTraceLine(s, false)
 			table.Append(data)
 		}
 	} else {
-		for _, to := range tsTo.Stats {
+		for _, to := range tsTo.ScenarioStats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			var data []string
@@ -586,12 +583,12 @@ func (p *TracePrinter) printTraceTSV(tsFrom, tsTo *TraceStats) {
 
 	var data []string
 	if tsTo == nil {
-		for _, s := range tsFrom.Stats {
+		for _, s := range tsFrom.ScenarioStats {
 			data = p.GenerateTraceLine(s, false)
 			fmt.Println(strings.Join(data, "\t"))
 		}
 	} else {
-		for _, to := range tsTo.Stats {
+		for _, to := range tsTo.ScenarioStats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {
@@ -611,12 +608,12 @@ func (p *TracePrinter) printTraceCSV(tsFrom, tsTo *TraceStats) {
 
 	var data []string
 	if tsTo == nil {
-		for _, s := range tsFrom.Stats {
+		for _, s := range tsFrom.ScenarioStats {
 			data = p.GenerateTraceLine(s, true)
 			fmt.Println(strings.Join(data, ","))
 		}
 	} else {
-		for _, to := range tsTo.Stats {
+		for _, to := range tsTo.ScenarioStats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {
@@ -633,11 +630,11 @@ func (p *TracePrinter) printTraceHTML(tsFrom, tsTo *TraceStats) {
 	var data [][]string
 
 	if tsTo == nil {
-		for _, s := range tsFrom.Stats {
+		for _, s := range tsFrom.ScenarioStats {
 			data = append(data, p.GenerateTraceLine(s, true))
 		}
 	} else {
-		for _, to := range tsTo.Stats {
+		for _, to := range tsTo.ScenarioStats {
 			from := findTraceStatFrom(tsFrom, to)
 
 			if from == nil {

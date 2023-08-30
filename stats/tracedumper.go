@@ -7,7 +7,7 @@ import (
 )
 
 func (ts *TraceStats) DumpStats(w io.Writer) error {
-	buf, err := yaml.Marshal(&ts.Stats)
+	buf, err := yaml.Marshal(&ts.ScenarioStats)
 	if err != nil {
 		return err
 	}

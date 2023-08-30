@@ -6,6 +6,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/kylelemons/godebug v1.1.0
 	github.com/olekukonko/tablewriter v0.0.5
+	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.7.0
 	github.com/tkuchiki/parsetime v0.0.0-20210726130428-dd24a7b526ea
 	gopkg.in/yaml.v2 v2.4.0

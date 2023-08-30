@@ -3,11 +3,11 @@ package stats
 import "fmt"
 
 type TraceDiffer struct {
-	From *TraceStat
-	To   *TraceStat
+	From *ScenarioStat
+	To   *ScenarioStat
 }
 
-func NewTraceDiffer(from, to *TraceStat) *TraceDiffer {
+func NewTraceDiffer(from, to *ScenarioStat) *TraceDiffer {
 	return &TraceDiffer{
 		From: from,
 		To:   to,
