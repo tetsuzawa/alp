@@ -211,6 +211,10 @@ func (ts *TraceStats) SortWithOptions() {
 	ts.Sort(ts.sortOptions, ts.options.Reverse)
 }
 
+func (ts *TraceStats) TrimAfterLimit() {
+	ts.ScenarioStats = ts.ScenarioStats[:ts.options.Limit]
+}
+
 // TODO sortedSliceを作って、RequestDetail追加時にソートする
 // 遅延ソートでもいいかもしれない
 
@@ -917,7 +921,7 @@ func (ts *TraceStats) widthAverage() int {
 	//if w < 4 {
 	//	w = 4
 	//}
-	w := 5
+	w := 2 + 3
 	return w
 }
 
@@ -965,8 +969,7 @@ func (ts *TraceStats) widthP95() int {
 	if w < 2 {
 		w = 2
 	}
-	// Int.xxxx
-	w += 5
+	w += 3
 	return w
 }
 
@@ -982,7 +985,7 @@ func (ts *TraceStats) DrawP95HR() string {
 }
 
 func (ts *TraceStats) FormatP95(v float64) string {
-	w := ts.widthMin()
+	w := ts.widthP95()
 	f := fmt.Sprintf("%%%d.2f", w)
 	return fmt.Sprintf(f, v)
 }

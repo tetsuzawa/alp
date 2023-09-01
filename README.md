@@ -575,7 +575,7 @@ See: [Usage samples](./docs/usage_samples.md)
     - Print no header when TSV and CSV format
 - `--show-footers`
     - Print the total number of each 1xx ~ 5xx in the footer of the table or Markdown format
-- `--limit=5000`
+- `--limit=10`
     - Maximum number of profile results to be printed
     - This setting is to avoid using too much memory
     - The default is 5000 lines

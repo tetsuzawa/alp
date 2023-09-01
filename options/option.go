@@ -11,7 +11,7 @@ import (
 const (
 	DefaultSortOption      = "count"
 	DefaultFormatOption    = "pretty"
-	DefaultLimitOption     = 5000
+	DefaultLimitOption     = 10
 	DefaultLocationOption  = "Local"
 	DefaultOutputOption    = "all"
 	DefaultPaginationLimit = 100

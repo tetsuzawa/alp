@@ -212,6 +212,10 @@ Loop:
 
 	sts.SortWithOptions()
 	tsts.SortWithOptions()
+	tsts.TrimAfterLimit()
+
+	// limitを適用
+	tsts.SortWithOptions()
 	if p.options.Trace {
 		tracePrinter.Print(tsts, nil)
 	} else {
