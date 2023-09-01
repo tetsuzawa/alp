@@ -15,7 +15,7 @@ func defineOptions(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("file", "", "", "The access log file")
 	cmd.PersistentFlags().StringP("dump", "", "", "Dump profiled data as YAML")
 	cmd.PersistentFlags().StringP("load", "", "", "Load the profiled YAML data")
-	cmd.PersistentFlags().StringP("format", "", options.DefaultFormatOption, "The output format (table, markdown, tsv, csv and html)")
+	cmd.PersistentFlags().StringP("format", "", options.DefaultFormatOption, "The output format (pretty, table, markdown, tsv, csv and html)")
 	cmd.PersistentFlags().StringP("sort", "", options.DefaultSortOption, "Output the results in sorted order")
 	cmd.PersistentFlags().BoolP("reverse", "r", false, "Sort results in reverse order")
 	cmd.PersistentFlags().BoolP("noheaders", "", false, "Output no header line at all (only --format=tsv, csv)")

@@ -1,0 +1,28 @@
+{{ $p := . }}
+# Current date: {{ currentDate }}
+{{ with .GlobalStat -}}
+# Overall: {{ shortInt .Cnt }} total
+# Attribute                     Min        Max        Sum        Avg        95%     Median
+# ===================    ========== ========== ========== ========== ========== ==========
+# Response time          {{ shortTime .ResponseTime.Min | printf "%10s" }} {{ shortTime .ResponseTime.Max | printf "%10s" }} {{ shortTime .ResponseTime.Sum | printf "%10s" }} {{ shortTime (.ResponseTime.Avg .Cnt) | printf "%10s" }} {{ shortTime (.ResponseTime.PN .Cnt 95) | printf "%10s" }} {{ shortTime (.ResponseTime.PN .Cnt 50) | printf "%10s" }}
+# Request body bytes     {{ shortByteInt .RequestBodyBytes.Min | printf "%10s" }} {{ shortByteInt .RequestBodyBytes.Max | printf "%10s" }} {{ shortByteInt .RequestBodyBytes.Sum | printf "%10s" }} {{ shortByte (.RequestBodyBytes.Avg .Cnt) | printf "%10s" }} {{ shortByteInt (.RequestBodyBytes.PN .Cnt 95) | printf "%10s" }} {{ shortByteInt (.RequestBodyBytes.PN .Cnt 50) | printf "%10s" }}
+# Response body bytes    {{ shortByteInt .ResponseBodyBytes.Min | printf "%10s" }} {{ shortByteInt .ResponseBodyBytes.Max | printf "%10s" }}{{ shortByteInt .ResponseBodyBytes.Sum | printf "%10s" }}  {{ shortByte (.ResponseBodyBytes.Avg .Cnt) | printf "%10s" }} {{ shortByteInt (.ResponseBodyBytes.PN .Cnt 95) | printf "%10s" }} {{ shortByteInt (.ResponseBodyBytes.PN .Cnt 50) | printf "%10s" }}
+{{ end -}}
+{{ $g := .GlobalStat }}
+# Profile
+# {{ $p.DrawRankHeader }} {{ $p.DrawScenarioIDHeader }} {{ $p.DrawSumHeader }} {{ $p.DrawCountHeader }} {{ $p.DrawAverageHeader }}
+# {{ $p.DrawRankHR }} {{ $p.DrawScenarioIDHR }} {{ $p.DrawSumHR }} {{ $p.DrawCountHR }} {{ $p.DrawAverageHR }}
+{{ range $i, $v := .ScenarioStats }}{{ with $v -}}
+# {{ $p.FormatRank $i }} {{ .ID | $p.FormatScenarioID }} {{ .ResponseTime.Sum | $p.FormatSum }} {{ percent .ResponseTime.Sum $g.ResponseTime.Sum | printf "%5.1f%%" }} {{ $p.FormatCount .Cnt }} {{ .ResponseTime.Avg .Cnt | $p.FormatAverage }}
+{{ end }}{{ end -}}
+{{""}}
+{{ range $i, $stat := .ScenarioStats }}{{ with $stat -}}
+# Scenario {{ rank $i }}: ID {{ $stat.ID }}
+# Example Trace ID {{ .RandomTraceID }}
+# {{ $p.DrawRequestHeader }} {{ $p.DrawSumHeader }} {{ $p.DrawCountHeader }} {{ $p.DrawAverageHeader }} {{ $p.DrawP95Header }}
+# {{ $p.DrawRequestHR }} {{ $p.DrawSumHR }} {{ $p.DrawCountHR }} {{ $p.DrawAverageHR }} {{ $p.DrawP95HR }}
+{{ range $j, $v := $stat.RequestDetailsStats }}{{ with $v }}# {{ $p.FormatRequest .RequestDetail.Method .RequestDetail.Uri .RequestDetail.Status }} {{ .ResponseTime.Sum | $p.FormatSum }} {{ percent .ResponseTime.Sum $stat.ResponseTime.Sum | printf "%5.1f%%" }} {{ $p.FormatCount .Cnt }} {{ .ResponseTime.Avg .Cnt | $p.FormatAverage }} {{ (.ResponseTime.PN .Cnt 95) | $p.FormatP95 }}
+{{ end }}{{ end -}}
+{{""}}
+
+{{ end }}{{ end -}}
